@@ -1,0 +1,2771 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FilmBurn — Мой каталог фильмов и CD-архив</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    :root {
+      --bg: #111318;
+      --panel: #1a1e26;
+      --panel-2: #222834;
+      --text: #eef1f6;
+      --muted: #9aa4b2;
+      --accent: #4f8cff;
+      --gold: #f5b942;
+      --ok: #38c172;
+      --wait: #f59e0b;
+      --rewatch: #a78bfa;
+      --border: #2e3646;
+    }
+    * { box-sizing: border-box; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+    body { margin: 0; background: var(--bg); color: var(--text); padding: 24px; }
+    .container { max-width: 1220px; margin: 0 auto; display: grid; grid-template-columns: 376px 1fr; gap: 24px; align-items: start; }
+    @media (max-width: 920px) { .container { grid-template-columns: 1fr; } }
+    .card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 18px; }
+    h1 { margin: 0; font-size: 22px; }
+    .stats { font-size: 13px; color: var(--muted); margin-top: 6px; margin-bottom: 14px; }
+    h2 { margin: 0 0 12px; font-size: 17px; }
+    h3 { margin: 0 0 10px; font-size: 15px; }
+    label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 5px; }
+    input, textarea, select, button {
+      width: 100%; border-radius: 9px; border: 1px solid var(--border);
+      background: var(--panel-2); color: var(--text); padding: 9px 11px; font-size: 14px;
+    }
+    textarea { min-height: 68px; resize: vertical; }
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    @media (max-width: 560px) { .two-col { grid-template-columns: 1fr; } }
+    button { cursor: pointer; background: var(--accent); border: none; font-weight: 600; margin-top: 12px; }
+    button:hover { filter: brightness(1.08); }
+    button:disabled { opacity: 0.55; cursor: not-allowed; }
+    button.secondary { background: var(--panel-2); border: 1px solid var(--border); font-weight: 500; margin-top: 8px; }
+    button.danger { background: #3a1d24; border: 1px solid #6e2b3a; color: #ff9eb0; }
+
+    .check-row {
+      display: flex; align-items: center; gap: 9px; margin-top: 10px;
+      padding: 9px 11px; border-radius: 9px; background: var(--panel-2);
+      border: 1px solid var(--border); cursor: pointer; user-select: none;
+    }
+    .check-row input[type="checkbox"] {
+      width: 16px; height: 16px; margin: 0; accent-color: var(--accent); cursor: pointer;
+    }
+    .check-row.rewatch-row input[type="checkbox"] { accent-color: var(--rewatch); }
+    .check-row span { font-size: 13px; color: var(--text); font-weight: 500; }
+
+    .stars { display: flex; flex-wrap: nowrap; gap: 3px; margin-top: 4px; width: 100%; }
+    .star-btn {
+      flex: 1 1 0; min-width: 0; padding: 5px 0; font-size: 14px; line-height: 1;
+      text-align: center; background: var(--panel-2); border: 1px solid var(--border);
+      color: #5b6472; margin-top: 0; border-radius: 7px;
+    }
+    .star-btn.active { color: var(--gold); border-color: #6b5320; background: #292214; }
+
+    /* Брендинг FilmBurn в шапке */
+    .brand-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .brand-tag {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 2px 8px; border-radius: 999px;
+      background: linear-gradient(135deg, rgba(245, 158, 11, 0.16), rgba(239, 68, 68, 0.14));
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      color: #fbbf24; font-size: 11px; font-weight: 800; letter-spacing: 0.06em;
+      text-transform: uppercase; flex-shrink: 0;
+    }
+    .brand-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: #f97316; box-shadow: 0 0 8px #f97316;
+    }
+
+    /* Приветственная заставка FilmBurn */
+    .splash-screen {
+      position: fixed; inset: 0; z-index: 300;
+      background:
+        radial-gradient(circle at 50% 42%, rgba(234, 88, 12, 0.16), transparent 58%),
+        #050608;
+      display: flex; align-items: center; justify-content: center;
+      padding: 24px;
+      opacity: 1; visibility: visible;
+      transition: opacity 0.42s ease, visibility 0.42s ease;
+    }
+    .splash-screen.hidden {
+      opacity: 0; visibility: hidden; pointer-events: none;
+    }
+    .splash-inner {
+      max-width: 760px; width: 100%;
+      display: flex; flex-direction: column; align-items: center; text-align: center;
+      gap: 18px;
+    }
+    .splash-logo-wrap {
+      position: relative;
+      width: min(560px, 92vw);
+      max-height: min(340px, 44vh);
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 22px; overflow: hidden;
+    }
+    .splash-logo-wrap::after {
+      content: ""; position: absolute; inset: 0; pointer-events: none;
+      box-shadow: inset 0 0 46px 22px #050608;
+      border-radius: 22px;
+    }
+    .splash-logo-img {
+      width: 100%; height: 100%; max-height: 340px;
+      object-fit: cover; display: block;
+      -webkit-mask-image: radial-gradient(ellipse 78% 74% at 50% 50%, #000 58%, rgba(0,0,0,0.65) 78%, transparent 100%);
+      mask-image: radial-gradient(ellipse 78% 74% at 50% 50%, #000 58%, rgba(0,0,0,0.65) 78%, transparent 100%);
+      transform: scale(1);
+      animation: splashLogoZoom 2.5s ease-out forwards;
+    }
+    @keyframes splashLogoZoom {
+      from { transform: scale(0.96); }
+      to { transform: scale(1.03); }
+    }
+    .splash-fallback {
+      padding: 28px 36px; border-radius: 18px;
+      background: rgba(20, 23, 30, 0.85); border: 1px solid rgba(245, 158, 11, 0.35);
+      font-size: clamp(32px, 7vw, 54px); font-weight: 900; letter-spacing: 0.04em;
+      background-clip: text; -webkit-background-clip: text;
+      color: transparent; background-image: linear-gradient(135deg, #cbd5e1 0%, #f59e0b 55%, #ef4444 100%);
+    }
+    .splash-greeting {
+      font-size: clamp(18px, 3vw, 24px); font-weight: 700; color: #f3f5f8;
+      line-height: 1.3; margin: 0;
+    }
+    .splash-sub {
+      font-size: 13px; color: var(--muted); min-height: 18px; margin: 0;
+    }
+    .splash-continue-btn {
+      width: auto; margin-top: 4px; padding: 9px 22px; font-size: 13px;
+      border-radius: 999px; background: rgba(34, 40, 52, 0.9);
+      border: 1px solid #394357; color: var(--text); font-weight: 600;
+    }
+    .splash-continue-btn:hover { border-color: var(--accent); background: #283244; }
+
+    /* Аватарки */
+    .avatar-circle {
+      border-radius: 50%; overflow: hidden; flex: 0 0 auto;
+      display: inline-flex; align-items: center; justify-content: center;
+      background: #27354f; border: 1px solid var(--border);
+      color: #dbe8ff; font-weight: 700; user-select: none;
+    }
+    .avatar-circle img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .avatar-sm { width: 26px; height: 26px; font-size: 11px; }
+    .avatar-md { width: 36px; height: 36px; font-size: 13px; }
+    .avatar-lg { width: 68px; height: 68px; font-size: 22px; }
+
+    /* Шапка каталога, профиль и меню «⋮» */
+    .catalog-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 14px;
+      flex-wrap: nowrap;
+      margin-bottom: 4px;
+    }
+    .header-left {
+      min-width: 0;
+      flex: 1 1 auto;
+    }
+    .header-left h1 {
+      font-size: 20px;
+      line-height: 1.25;
+    }
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: 0 0 auto;
+      white-space: nowrap;
+    }
+    .profile-pill {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: nowrap;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 5px 10px;
+      font-size: 13px;
+    }
+    .profile-trigger {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: transparent; border: none; padding: 2px 4px; margin-top: 0;
+      width: auto; color: var(--text); font-weight: 600; font-size: 13px; border-radius: 8px;
+    }
+    .profile-trigger:hover { background: var(--panel-2); filter: none; }
+    .profile-handle { font-size: 11px; color: var(--muted); font-weight: 500; }
+    .cd-toggle-label {
+      display: inline-flex; align-items: center; gap: 6px; margin: 0;
+      font-size: 12px; color: var(--muted); cursor: pointer; user-select: none;
+    }
+    .cd-toggle-label input { width: 14px; height: 14px; margin: 0; accent-color: var(--ok); cursor: pointer; }
+    .mini-btn {
+      width: auto; margin-top: 0; padding: 6px 10px; font-size: 12px;
+      border-radius: 8px; background: var(--panel-2); border: 1px solid var(--border); font-weight: 500;
+    }
+    .menu-wrap { position: relative; flex-shrink: 0; }
+    .dots-btn {
+      width: 38px; height: 38px; margin-top: 0; padding: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 20px; line-height: 1; background: var(--panel-2);
+      border: 1px solid var(--border); border-radius: 10px; color: var(--text);
+    }
+    .dots-btn:hover { border-color: var(--accent); }
+    .dropdown-menu {
+      position: absolute; right: 0; top: 44px; min-width: 240px;
+      background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+      padding: 6px; box-shadow: 0 14px 36px rgba(0, 0, 0, 0.55);
+      display: none; z-index: 50;
+    }
+    .dropdown-menu.open { display: block; }
+    .dropdown-item {
+      width: 100%; margin-top: 0; padding: 9px 11px; text-align: left;
+      background: transparent; border: none; border-radius: 8px;
+      font-size: 13px; font-weight: 500; color: var(--text);
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    }
+    .dropdown-item:hover { background: var(--panel-2); }
+    .menu-divider { height: 1px; background: var(--border); margin: 4px 6px; }
+
+    @media (max-width: 980px) {
+      .catalog-header {
+        flex-wrap: wrap;
+        align-items: flex-start;
+      }
+      .header-right {
+        flex-wrap: wrap;
+        white-space: normal;
+      }
+    }
+
+    .nav-bar {
+      display: flex; justify-content: space-between; align-items: center;
+      gap: 8px; flex-wrap: wrap; margin-bottom: 14px;
+    }
+    .nav-tabs { display: flex; gap: 8px; flex-wrap: wrap; }
+    .nav-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .nav-tab {
+      width: auto; margin-top: 0; padding: 8px 13px; font-size: 13px;
+      border-radius: 10px; background: var(--panel); border: 1px solid var(--border);
+      color: var(--muted); font-weight: 600; display: inline-flex; align-items: center; gap: 6px;
+    }
+    .nav-tab.active { background: #23324d; border-color: var(--accent); color: var(--text); }
+    .count-pill {
+      font-size: 11px; padding: 2px 7px; border-radius: 999px;
+      background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+    }
+    .count-pill.unread {
+      background: rgba(79, 140, 255, 0.22); border-color: var(--accent); color: #b7d2ff;
+    }
+
+    .toolbar {
+      display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr 1fr;
+      gap: 8px; margin-bottom: 16px;
+    }
+    .toolbar.no-cd { grid-template-columns: 1.5fr 1fr 1fr 1fr; }
+    .toolbar.feed-bar { grid-template-columns: 1.3fr 1fr 1fr 1fr; }
+    @media (max-width: 1120px) {
+      .toolbar, .toolbar.no-cd, .toolbar.feed-bar { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 600px) {
+      .toolbar, .toolbar.no-cd, .toolbar.feed-bar { grid-template-columns: 1fr; }
+    }
+    .toolbar input, .toolbar select { min-width: 0; padding: 8px 10px; font-size: 13px; }
+
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 16px; }
+    .movie-card {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+      overflow: hidden; display: flex; flex-direction: column;
+    }
+    .cover-box { height: 185px; background: var(--panel-2); display: flex; align-items: center; justify-content: center; color: var(--muted); position: relative; }
+    .cover-box img { width: 100%; height: 100%; object-fit: cover; }
+    .badges-top {
+      position: absolute; top: 10px; right: 10px; left: 10px;
+      display: flex; justify-content: space-between; align-items: flex-start; gap: 6px; pointer-events: none;
+    }
+    .badge {
+      font-size: 11px; font-weight: 700; padding: 4px 8px; border-radius: 999px;
+      background: rgba(17, 19, 24, 0.9); border: 1px solid var(--border);
+    }
+    .badge.done { color: var(--ok); border-color: #255c3c; }
+    .badge.wait { color: var(--wait); border-color: #6b4914; }
+    .badge.rewatch { color: var(--rewatch); border-color: #553c9a; }
+    .badge.private { color: var(--muted); border-color: #465066; }
+
+    .movie-body { padding: 14px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
+    .title-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .movie-title {
+      font-size: 17px; font-weight: 700; cursor: pointer;
+      transition: color 0.15s ease; line-height: 1.25;
+    }
+    .movie-title:hover { color: var(--accent); text-decoration: underline; }
+    .open-icon-btn {
+      flex: 0 0 auto; width: 28px; height: 28px; margin-top: 0; padding: 0;
+      border-radius: 8px; background: var(--panel-2); border: 1px solid var(--border);
+      color: var(--accent); font-size: 13px; display: inline-flex;
+      align-items: center; justify-content: center;
+    }
+    .open-icon-btn:hover { background: #263147; border-color: var(--accent); }
+
+    .author-line { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: var(--muted); }
+    .meta { font-size: 12px; color: var(--muted); display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .rating-text { color: var(--gold); font-weight: 600; font-size: 13px; }
+    .desc { font-size: 13px; color: #d6dde8; line-height: 1.45; }
+    .also-watched {
+      font-size: 12px; color: #b9c7dc; background: var(--panel-2);
+      border: 1px solid var(--border); border-radius: 8px; padding: 7px 9px;
+      line-height: 1.35;
+    }
+    .also-watched strong { color: var(--text); font-weight: 600; }
+    .actions { margin-top: auto; display: flex; gap: 8px; padding-top: 8px; flex-wrap: wrap; }
+    .actions button { margin-top: 0; padding: 8px 10px; font-size: 13px; flex: 1; }
+    .actions button.small-btn { flex: 0 0 auto; }
+
+    .empty-cta-btn { width: auto; margin-top: 12px; padding: 8px 14px; font-size: 13px; }
+
+    .taste-top {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 14px; flex-wrap: wrap; margin-bottom: 16px;
+    }
+    .taste-friend-select { max-width: 280px; }
+    .match-score-box {
+      display: flex; align-items: baseline; gap: 10px;
+      background: var(--panel-2); border: 1px solid var(--border);
+      border-radius: 12px; padding: 10px 14px;
+    }
+    .match-percent { font-size: 24px; font-weight: 800; color: var(--ok); }
+    .match-sub { font-size: 12px; color: var(--muted); }
+    .compare-list { display: grid; gap: 10px; margin-bottom: 20px; }
+    .compare-row {
+      display: flex; justify-content: space-between; align-items: center; gap: 12px;
+      flex-wrap: wrap; background: var(--panel-2); border: 1px solid var(--border);
+      border-radius: 10px; padding: 10px 12px; font-size: 13px;
+    }
+    .compare-scores { display: flex; gap: 12px; font-weight: 600; color: var(--gold); }
+
+    .search-friend-row { display: flex; gap: 8px; align-items: center; }
+    .search-friend-row input { flex: 1; }
+    .search-friend-row button { width: auto; margin-top: 0; padding: 9px 14px; white-space: nowrap; }
+    .section-block { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); }
+    .list-stack { display: grid; gap: 8px; }
+    .item-row {
+      display: flex; justify-content: space-between; align-items: center; gap: 10px;
+      flex-wrap: wrap; background: var(--panel-2); border: 1px solid var(--border);
+      border-radius: 10px; padding: 10px 12px; font-size: 13px;
+    }
+    .item-row.unread { border-color: #4f8cff88; background: #1e283b; }
+    .user-inline { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .item-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+    .item-actions button { width: auto; margin-top: 0; padding: 6px 10px; font-size: 12px; }
+    .status-tag { font-size: 12px; color: var(--muted); }
+    .msg-line { margin-top: 8px; font-size: 12px; line-height: 1.4; }
+    .msg-line.err { color: #ff9eb0; }
+    .msg-line.ok { color: var(--ok); }
+
+    .avatar-editor-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+    .avatar-editor-controls { flex: 1; min-width: 220px; }
+    .avatar-btns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+    .avatar-btns button, .avatar-btns label { width: auto; margin-top: 0; padding: 7px 11px; font-size: 12px; }
+
+    .auth-wrap { max-width: 440px; margin: 48px auto; }
+    .auth-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px; }
+    .auth-tab {
+      margin-top: 0; padding: 9px; background: var(--panel-2);
+      border: 1px solid var(--border); color: var(--muted); font-weight: 600;
+    }
+    .auth-tab.active { background: #24334d; border-color: var(--accent); color: var(--text); }
+    .auth-msg { margin-top: 10px; font-size: 13px; color: var(--muted); line-height: 1.4; }
+    .auth-msg.err { color: #ff9eb0; }
+    .auth-msg.ok { color: var(--ok); }
+
+    .modal-backdrop {
+      position: fixed; inset: 0; background: rgba(6, 8, 12, 0.78);
+      display: none; align-items: center; justify-content: center; padding: 20px; z-index: 100;
+    }
+    .modal-backdrop.open { display: flex; }
+    .modal-window {
+      width: 100%; max-width: 820px; max-height: 90vh; overflow-y: auto;
+      background: var(--panel); border: 1px solid var(--border); border-radius: 16px;
+      padding: 22px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+    }
+    .modal-window.narrow { max-width: 640px; }
+    .modal-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 16px; }
+    .modal-title { margin: 0; font-size: 22px; }
+    .close-x {
+      width: auto; margin-top: 0; padding: 6px 12px; background: var(--panel-2);
+      border: 1px solid var(--border); font-size: 14px;
+    }
+    .kp-layout { display: grid; grid-template-columns: 220px 1fr; gap: 20px; }
+    @media (max-width: 680px) { .kp-layout { grid-template-columns: 1fr; } }
+    .kp-poster {
+      width: 100%; aspect-ratio: 2 / 3; border-radius: 12px; overflow: hidden;
+      background: var(--panel-2); border: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: center; color: var(--muted);
+    }
+    .kp-poster img { width: 100%; height: 100%; object-fit: cover; }
+    .kp-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    .kp-table td { padding: 6px 4px; vertical-align: top; border-bottom: 1px solid rgba(255,255,255,0.05); }
+    .kp-table td.kp-key { color: var(--muted); width: 150px; }
+    .kp-section { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
+    .kp-section h3 { margin: 0 0 8px; font-size: 15px; color: #dbe2ee; }
+    .kp-note {
+      background: var(--panel-2); border-left: 3px solid var(--gold);
+      padding: 10px 12px; border-radius: 8px; font-size: 14px; color: #e6ecf5;
+    }
+  </style>
+</head>
+<body>
+  <!-- Приветственная заставка FilmBurn -->
+  <div class="splash-screen hidden" id="splashScreen" role="dialog" aria-modal="true" aria-label="Приветствие FilmBurn">
+    <div class="splash-inner">
+      <div class="splash-logo-wrap" id="splashLogoWrap">
+        <img src="filmburn-logo.jpg" alt="FilmBurn" class="splash-logo-img" id="splashLogoImg" />
+        <div class="splash-fallback" id="splashLogoFallback" style="display:none;">FILMBURN</div>
+      </div>
+      <p class="splash-greeting" id="splashGreeting">Добро пожаловать в FilmBurn</p>
+      <p class="splash-sub" id="splashSub"></p>
+      <button type="button" class="splash-continue-btn" id="splashContinueBtn">Продолжить</button>
+    </div>
+  </div>
+
+  <div class="auth-wrap" id="authScreen">
+    <div class="card">
+      <div class="brand-row" style="margin-bottom:6px;">
+        <h1>Каталог фильмов</h1>
+        <span class="brand-tag"><span class="brand-dot"></span>FilmBurn</span>
+      </div>
+      <div class="stats" style="margin-bottom:14px;">Войди или зарегистрируйся, чтобы хранить свой каталог в облаке и делиться лентой с друзьями.</div>
+
+      <div class="auth-tabs">
+        <button type="button" class="auth-tab active" id="tabLogin">Вход</button>
+        <button type="button" class="auth-tab" id="tabRegister">Регистрация</button>
+      </div>
+
+      <form id="authForm">
+        <div id="displayNameGroup" style="display:none;">
+          <label>Отображаемое имя</label>
+          <input type="text" id="authDisplayName" placeholder="Например, Илья или имя друга" />
+        </div>
+
+        <label>Почта или логин *</label>
+        <input type="text" id="authLogin" required placeholder="name@example.com или логин" autocomplete="username" />
+
+        <label>Пароль *</label>
+        <input type="password" id="authPassword" required minlength="6" placeholder="Минимум 6 символов" autocomplete="current-password" />
+
+        <button type="submit" id="authSubmitBtn">Войти</button>
+        <div class="auth-msg" id="authMessage"></div>
+      </form>
+    </div>
+  </div>
+
+  <div class="container" id="appContainer" style="display:none;">
+    <form class="card" id="movieForm">
+      <h2 id="formTitle">Добавить фильм</h2>
+      <input type="hidden" id="editId" />
+
+      <label>Название фильма *</label>
+      <input type="text" id="title" required list="friendMoviesDatalist" placeholder="Например, Поиск" />
+      <datalist id="friendMoviesDatalist"></datalist>
+
+      <div class="two-col">
+        <div>
+          <label>Год выхода</label>
+          <input type="text" id="releaseYear" placeholder="Например, 2018" />
+        </div>
+        <div>
+          <label>Длительность</label>
+          <input type="text" id="duration" placeholder="Например, 102 мин" />
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div>
+          <label>Страна</label>
+          <input type="text" id="country" placeholder="США, Россия..." />
+        </div>
+        <div>
+          <label>Жанр</label>
+          <input type="text" id="genre" placeholder="триллер, детектив..." />
+        </div>
+      </div>
+
+      <label>Режиссёр</label>
+      <input type="text" id="director" placeholder="Например, Аниш Чаганти" />
+
+      <label>В главных ролях</label>
+      <input type="text" id="cast" placeholder="Джон Чо, Дебра Мессинг..." />
+
+      <label>Дата просмотра</label>
+      <input type="date" id="watchedDate" />
+
+      <label>Твоя оценка (1–10 звёзд): <span id="ratingValue">7</span>/10</label>
+      <div class="stars" id="starsContainer"></div>
+
+      <label class="check-row" for="publicFlag">
+        <input type="checkbox" id="publicFlag" checked />
+        <span>Показывать в общей ленте друзей</span>
+      </label>
+
+      <label class="check-row rewatch-row" for="rewatchFlag">
+        <input type="checkbox" id="rewatchFlag" />
+        <span>В планах / Пересмотреть</span>
+      </label>
+
+      <div id="cdFormFields">
+        <div class="two-col">
+          <div>
+            <label>Статус записи на CD</label>
+            <select id="cdStatus">
+              <option value="wait">Ожидает записи</option>
+              <option value="done">Записан на CD</option>
+            </select>
+          </div>
+          <div>
+            <label>Метка / номер CD</label>
+            <input type="text" id="cdLabel" placeholder="CD-01" />
+          </div>
+        </div>
+
+        <label>Торрент (magnet:-ссылка, ссылка или путь)</label>
+        <input type="text" id="torrent" placeholder="magnet:?xt=urn:btih:... или заметка" />
+      </div>
+
+      <label>Обложка фильма</label>
+      <input type="file" id="coverFile" accept="image/*" />
+
+      <label>Сюжет / описание фильма (как на Кинопоиске)</label>
+      <textarea id="plot" placeholder="О чём фильм — официальный синопсис или описание сюжета..."></textarea>
+
+      <label>Твои личные впечатления / заметки</label>
+      <textarea id="description" placeholder="Например: Очень эстетичный фильм..."></textarea>
+
+      <button type="submit" id="submitBtn">Сохранить в каталог</button>
+      <button type="button" class="secondary" id="cancelEditBtn" style="display:none">Отменить редактирование</button>
+    </form>
+
+    <div>
+      <div class="catalog-header">
+        <div class="header-left">
+          <div class="brand-row">
+            <h1 id="catalogTitle">Мой каталог фильмов и CD-архив</h1>
+            <span class="brand-tag"><span class="brand-dot"></span>FilmBurn</span>
+          </div>
+          <div class="stats" id="statsText" style="margin-bottom:0;">Фильмов: 0</div>
+        </div>
+
+        <div class="header-right">
+          <div class="profile-pill">
+            <button type="button" class="profile-trigger" id="openProfileBtn" title="Открыть настройки профиля и аккаунта">
+              <span id="headerAvatarSlot"></span>
+              <span style="text-align:left;line-height:1.15;">
+                <span class="profile-name" id="profileDisplayName">Аккаунт</span><br>
+                <span class="profile-handle" id="profileHandleText"></span>
+              </span>
+            </button>
+            <label class="cd-toggle-label" title="Показывать поля и счётчики CD-архива">
+              <input type="checkbox" id="cdModeToggle" />
+              <span>Режим CD-архива</span>
+            </label>
+            <button type="button" class="mini-btn" id="logoutBtn">Выйти</button>
+          </div>
+
+          <div class="menu-wrap" id="menuWrap">
+            <button type="button" class="dots-btn" id="dotsBtn" title="Меню, профиль, друзья и резервная копия" aria-label="Меню">⋮</button>
+            <div class="dropdown-menu" id="dropdownMenu">
+              <button type="button" class="dropdown-item" id="menuProfileBtn">
+                <span>⚙️ Профиль и аккаунт</span>
+              </button>
+              <button type="button" class="dropdown-item" id="menuFriendsBtn">
+                <span>👥 Друзья</span>
+                <span class="count-pill" id="menuFriendsCount">0</span>
+              </button>
+              <button type="button" class="dropdown-item" id="menuNotificationsBtn">
+                <span>🔔 Уведомления</span>
+                <span class="count-pill" id="menuUnreadCount">0</span>
+              </button>
+              <div class="menu-divider"></div>
+              <button type="button" class="dropdown-item" id="exportJsonBtn">💾 Экспорт JSON (бэкап)</button>
+              <button type="button" class="dropdown-item" id="exportCsvBtn">📄 Экспорт CSV (таблица)</button>
+              <button type="button" class="dropdown-item" id="importJsonBtn">📥 Импорт JSON</button>
+            </div>
+            <input type="file" id="importFile" accept="application/json" style="display:none" />
+          </div>
+        </div>
+      </div>
+
+      <div class="nav-bar">
+        <div class="nav-tabs">
+          <button type="button" class="nav-tab active" id="tabMyCatalog">Мой каталог</button>
+          <button type="button" class="nav-tab" id="tabFriendsFeed">Лента друзей</button>
+          <button type="button" class="nav-tab" id="tabTasteMatch">Совпадение вкусов</button>
+        </div>
+        <div class="nav-actions">
+          <button type="button" class="nav-tab" id="openFriendsModalBtn">
+            <span>Друзья</span>
+            <span class="count-pill" id="friendsCountBadge">0</span>
+          </button>
+          <button type="button" class="nav-tab" id="tabNotifications">
+            <span>Уведомления</span>
+            <span class="count-pill" id="unreadCountBadge">0</span>
+          </button>
+        </div>
+      </div>
+
+      <div id="myCatalogSection">
+        <div class="toolbar" id="toolbar">
+          <input type="text" id="searchInput" placeholder="Поиск по названию..." />
+          <select id="filterStatus" title="Фильтр">
+            <option value="all">Все фильмы</option>
+            <option value="wait" data-cd-only="true">Только не записанные на диск</option>
+            <option value="done" data-cd-only="true">Уже записаны</option>
+            <option value="rewatch">Пересмотреть</option>
+          </select>
+          <select id="filterGenre" title="Фильтр по жанру">
+            <option value="all">Все жанры</option>
+          </select>
+          <select id="filterRating" title="Фильтр по оценке">
+            <option value="all">Любая оценка</option>
+            <option value="9">Оценка от 9 ★</option>
+            <option value="7">Оценка от 7 ★</option>
+            <option value="5">Оценка от 5 ★</option>
+          </select>
+          <select id="sortBy" title="Сортировка">
+            <option value="new">Сортировка: новые</option>
+            <option value="rating_desc">Сортировка: оценка ↓</option>
+            <option value="watched_desc">Сортировка: просмотр ↓</option>
+          </select>
+        </div>
+        <div class="grid" id="moviesGrid"></div>
+      </div>
+
+      <div id="friendsFeedSection" style="display:none;">
+        <div class="toolbar feed-bar">
+          <input type="text" id="feedSearchInput" placeholder="Поиск по названию фильма..." />
+          <select id="feedFriendFilter" title="Фильтр по другу">
+            <option value="all">Все друзья</option>
+          </select>
+          <select id="feedScopeFilter" title="Область ленты">
+            <option value="friends">Только друзья</option>
+            <option value="all_public">Все публичные записи</option>
+          </select>
+          <select id="feedSortBy" title="Сортировка ленты">
+            <option value="new">Сначала свежие</option>
+            <option value="rating_desc">Сначала высокая оценка</option>
+            <option value="watched_desc">По дате просмотра ↓</option>
+          </select>
+        </div>
+        <div class="grid" id="friendsFeedGrid"></div>
+      </div>
+
+      <div id="tasteMatchSection" style="display:none;">
+        <div class="card" id="tasteMatchBody"></div>
+      </div>
+
+      <div id="notificationsSection" style="display:none;">
+        <div class="card" id="notificationsBody"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Модальное окно подробной карточки фильма -->
+  <div class="modal-backdrop" id="movieModal" onclick="handleBackdropClick(event, 'movieModal')">
+    <div class="modal-window" id="modalContent"></div>
+  </div>
+
+  <!-- Модальное окно «Друзья» -->
+  <div class="modal-backdrop" id="friendsModal" onclick="handleBackdropClick(event, 'friendsModal')">
+    <div class="modal-window narrow" id="friendsModalContent"></div>
+  </div>
+
+  <!-- Модальное окно «Профиль и аккаунт» -->
+  <div class="modal-backdrop" id="profileModal" onclick="handleBackdropClick(event, 'profileModal')">
+    <div class="modal-window narrow" id="profileModalContent"></div>
+  </div>
+
+  <script>
+    const SUPABASE_URL = "https://cdvcvuhrtzjttmapmtuk.supabase.co";
+    const SUPABASE_ANON_KEY = "sb_publishable_sXLJyJitcGsXeESnxdSxdA_he_vvzVZ";
+    const FILMBURN_LOGO_SRC = "filmburn-logo.jpg";
+    const SPLASH_SESSION_KEY = "filmburn_splash_shown_v1";
+
+    const isConfigReady =
+      SUPABASE_URL &&
+      SUPABASE_ANON_KEY &&
+      !SUPABASE_URL.includes("YOUR_SUPABASE_URL") &&
+      !SUPABASE_ANON_KEY.includes("YOUR_SUPABASE_ANON_KEY");
+
+    const sb = isConfigReady
+      ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+      : null;
+
+    let currentUser = null;
+    let profile = {
+      display_name: "Пользователь",
+      username: "",
+      bio: "",
+      avatar_url: "",
+      default_public: true,
+      cd_mode: true,
+      show_splash: true
+    };
+    let profilesMap = new Map();
+    let myMovies = [];
+    let allPublicOtherMovies = [];
+    let friendRequests = [];
+    let notifications = [];
+    let activeTab = "my";
+    let selectedTasteFriendId = "";
+    let friendSearchQuery = "";
+    let friendSearchFeedback = "";
+    let currentRating = 7;
+    let currentCoverDataUrl = "";
+    let authMode = "login";
+    let realtimeChannel = null;
+    let splashTimer = null;
+
+    const starsContainer = document.getElementById("starsContainer");
+    const ratingValue = document.getElementById("ratingValue");
+    const watchedDateInput = document.getElementById("watchedDate");
+    watchedDateInput.valueAsDate = new Date();
+
+    /* Заставка FilmBurn */
+    const splashScreen = document.getElementById("splashScreen");
+    const splashLogoImg = document.getElementById("splashLogoImg");
+    const splashLogoFallback = document.getElementById("splashLogoFallback");
+    const splashGreeting = document.getElementById("splashGreeting");
+    const splashSub = document.getElementById("splashSub");
+
+    splashLogoImg.src = FILMBURN_LOGO_SRC;
+    splashLogoImg.addEventListener("error", () => {
+      splashLogoImg.style.display = "none";
+      splashLogoFallback.style.display = "block";
+    });
+
+    function isSplashOpen() {
+      return splashScreen && !splashScreen.classList.contains("hidden");
+    }
+
+    function updateSplashText() {
+      if (!currentUser) {
+        splashGreeting.textContent = "Добро пожаловать в FilmBurn";
+        splashSub.textContent = "Личный каталог фильмов, CD-архив и лента друзей";
+        return;
+      }
+      const who = profile.username ? `${profile.display_name} (@${profile.username})` : (profile.display_name || "друг");
+      splashGreeting.textContent = `С возвращением, ${who}!`;
+
+      const unreadCount = notifications.filter(n => !n.is_read).length;
+      if (unreadCount > 0) {
+        splashSub.textContent = `У тебя ${unreadCount} непрочитанных уведомлений`;
+      } else {
+        splashSub.textContent = "Загружаем каталог и ленту друзей...";
+      }
+    }
+
+    function hideSplash() {
+      if (splashTimer) {
+        clearTimeout(splashTimer);
+        splashTimer = null;
+      }
+      splashScreen.classList.add("hidden");
+    }
+
+    function tryShowSplashOncePerSession(forceForAuthUser = false) {
+      if (sessionStorage.getItem(SPLASH_SESSION_KEY) === "1") return;
+      if (currentUser && profile.show_splash === false) {
+        sessionStorage.setItem(SPLASH_SESSION_KEY, "1");
+        return;
+      }
+      if (!currentUser && forceForAuthUser) return;
+
+      sessionStorage.setItem(SPLASH_SESSION_KEY, "1");
+      updateSplashText();
+      splashScreen.classList.remove("hidden");
+
+      if (splashTimer) clearTimeout(splashTimer);
+      splashTimer = setTimeout(() => {
+        hideSplash();
+      }, 2300);
+    }
+
+    splashScreen.addEventListener("click", (e) => {
+      if (e.target.closest("#splashLogoWrap")) return;
+      hideSplash();
+    });
+    document.getElementById("splashContinueBtn").addEventListener("click", hideSplash);
+
+    function escapeHtml(str = "") {
+      return String(str).replace(/[&<>"']/g, (m) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+      }[m]));
+    }
+
+    function getInitials(name = "") {
+      const clean = String(name || "").trim();
+      if (!clean) return "U";
+      const parts = clean.split(/\s+/).filter(Boolean);
+      if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+      return clean.slice(0, 2).toUpperCase();
+    }
+
+    function renderAvatarHtml(userId, sizeClass = "avatar-md") {
+      const p = userId === currentUser?.id ? profile : profilesMap.get(userId);
+      const name = p?.display_name || "Друг";
+      const avatar = p?.avatar_url || "";
+      if (avatar) {
+        return `<span class="avatar-circle ${sizeClass}"><img src="${avatar}" alt="${escapeHtml(name)}" /></span>`;
+      }
+      return `<span class="avatar-circle ${sizeClass}">${escapeHtml(getInitials(name))}</span>`;
+    }
+
+    function updateHeaderProfileBadge() {
+      document.getElementById("headerAvatarSlot").innerHTML = renderAvatarHtml(currentUser?.id, "avatar-sm");
+      document.getElementById("profileDisplayName").textContent = profile.display_name || "Аккаунт";
+      const handleEl = document.getElementById("profileHandleText");
+      handleEl.textContent = profile.username ? `@${profile.username}` : "";
+      handleEl.style.display = profile.username ? "inline" : "none";
+    }
+
+    function normalizeTitlePart(title = "") {
+      return String(title)
+        .toLowerCase()
+        .replace(/ё/g, "е")
+        .replace(/[^a-zа-я0-9\s]/gi, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+
+    function normalizeYearPart(year = "") {
+      const match = String(year || "").match(/\b(19\d\d|20\d\d)\b/);
+      return match ? match[1] : "";
+    }
+
+    function getMovieMatchKey(title, releaseYear) {
+      const normTitle = normalizeTitlePart(title);
+      if (!normTitle) return "";
+      const normYear = normalizeYearPart(releaseYear);
+      return normYear ? `${normTitle}__${normYear}` : normTitle;
+    }
+
+    function getConfirmedFriendIds() {
+      if (!currentUser) return new Set();
+      const ids = new Set();
+      friendRequests.forEach(req => {
+        if (req.status === "accepted") {
+          if (req.sender_id === currentUser.id) ids.add(req.receiver_id);
+          if (req.receiver_id === currentUser.id) ids.add(req.sender_id);
+        }
+      });
+      return ids;
+    }
+
+    function getFriendMoviesPool() {
+      const friendIds = getConfirmedFriendIds();
+      return allPublicOtherMovies.filter(m => friendIds.has(m.userId));
+    }
+
+    function findFriendMatchesForMovie(movie) {
+      const friendPool = getFriendMoviesPool();
+      const exactKey = getMovieMatchKey(movie.title, movie.releaseYear);
+      const titleOnlyKey = normalizeTitlePart(movie.title);
+      if (!titleOnlyKey) return [];
+
+      return friendPool.filter(fm => {
+        const fmExact = getMovieMatchKey(fm.title, fm.releaseYear);
+        const fmTitleOnly = normalizeTitlePart(fm.title);
+        if (exactKey && fmExact && exactKey === fmExact) return true;
+        if (!normalizeYearPart(movie.releaseYear) || !normalizeYearPart(fm.releaseYear)) {
+          return fmTitleOnly === titleOnlyKey;
+        }
+        return false;
+      });
+    }
+
+    function normalizeEmail(loginInput) {
+      const trimmed = loginInput.trim();
+      if (trimmed.includes("@")) return trimmed.toLowerCase();
+      const slug = trimmed.toLowerCase().replace(/[^a-z0-9._-]/g, "");
+      return `${slug || "user"}@catalog.local`;
+    }
+
+    function setAuthMessage(text, type = "") {
+      const el = document.getElementById("authMessage");
+      el.textContent = text;
+      el.className = "auth-msg" + (type ? ` ${type}` : "");
+    }
+
+    function switchAuthTab(mode) {
+      authMode = mode;
+      document.getElementById("tabLogin").classList.toggle("active", mode === "login");
+      document.getElementById("tabRegister").classList.toggle("active", mode === "register");
+      document.getElementById("displayNameGroup").style.display = mode === "register" ? "block" : "none";
+      document.getElementById("authSubmitBtn").textContent = mode === "login" ? "Войти" : "Создать аккаунт";
+      setAuthMessage("");
+    }
+
+    document.getElementById("tabLogin").addEventListener("click", () => switchAuthTab("login"));
+    document.getElementById("tabRegister").addEventListener("click", () => switchAuthTab("register"));
+
+    document.getElementById("authForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      if (!sb) {
+        setAuthMessage("Сначала укажи SUPABASE_URL и SUPABASE_ANON_KEY в коде файла.", "err");
+        return;
+      }
+
+      const rawLogin = document.getElementById("authLogin").value.trim();
+      const password = document.getElementById("authPassword").value;
+      const displayName = document.getElementById("authDisplayName").value.trim();
+      const email = normalizeEmail(rawLogin);
+      const btn = document.getElementById("authSubmitBtn");
+
+      btn.disabled = true;
+      setAuthMessage(authMode === "login" ? "Входим в аккаунт..." : "Регистрируем аккаунт...");
+
+      try {
+        if (authMode === "login") {
+          const { error } = await sb.auth.signInWithPassword({ email, password });
+          if (error) throw error;
+          setAuthMessage("Успешный вход!", "ok");
+        } else {
+          const { data, error } = await sb.auth.signUp({
+            email,
+            password,
+            options: { data: { display_name: displayName || rawLogin } }
+          });
+          if (error) throw error;
+          setAuthMessage(
+            !data.session
+              ? "Аккаунт создан. Подтверди почту по ссылке из письма и войди."
+              : "Аккаунт создан! Загружаем каталог...",
+            "ok"
+          );
+        }
+      } catch (err) {
+        setAuthMessage(err.message || "Ошибка авторизации.", "err");
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    document.getElementById("logoutBtn").addEventListener("click", async () => {
+      if (!sb) return;
+      await sb.auth.signOut();
+    });
+
+    function getUserName(userId) {
+      if (userId === currentUser?.id) return profile.display_name || "Вы";
+      return profilesMap.get(userId)?.display_name || "Друг";
+    }
+
+    function updateBadges() {
+      const friendCount = getConfirmedFriendIds().size;
+      const unreadCount = notifications.filter(n => !n.is_read).length;
+
+      ["friendsCountBadge", "menuFriendsCount"].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = friendCount;
+      });
+
+      ["unreadCountBadge", "menuUnreadCount"].forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.textContent = unreadCount;
+        el.classList.toggle("unread", unreadCount > 0);
+      });
+
+      if (isSplashOpen() && currentUser) {
+        updateSplashText();
+      }
+    }
+
+    async function loadOrCreateProfile(user) {
+      const fallbackName =
+        user.user_metadata?.display_name ||
+        (user.email ? user.email.split("@")[0] : "Пользователь");
+
+      const { data, error } = await sb
+        .from("profiles")
+        .select("id, display_name, username, bio, avatar_url, default_public, cd_mode, show_splash")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      if (error) {
+        profile = {
+          display_name: fallbackName,
+          username: "",
+          bio: "",
+          avatar_url: "",
+          default_public: true,
+          cd_mode: true,
+          show_splash: true
+        };
+      } else if (!data) {
+        const defaultRow = {
+          id: user.id,
+          display_name: fallbackName,
+          username: "",
+          bio: "",
+          avatar_url: "",
+          default_public: true,
+          cd_mode: true,
+          show_splash: true
+        };
+        const { data: inserted } = await sb
+          .from("profiles")
+          .insert(defaultRow)
+          .select("id, display_name, username, bio, avatar_url, default_public, cd_mode, show_splash")
+          .single();
+        profile = inserted || defaultRow;
+      } else {
+        profile = {
+          display_name: data.display_name || fallbackName,
+          username: data.username || "",
+          bio: data.bio || "",
+          avatar_url: data.avatar_url || "",
+          default_public: data.default_public !== false,
+          cd_mode: Boolean(data.cd_mode),
+          show_splash: data.show_splash !== false
+        };
+      }
+
+      document.getElementById("publicFlag").checked = profile.default_public !== false;
+    }
+
+    function switchMainTab(tab) {
+      activeTab = tab;
+      document.getElementById("tabMyCatalog").classList.toggle("active", tab === "my");
+      document.getElementById("tabFriendsFeed").classList.toggle("active", tab === "feed");
+      document.getElementById("tabTasteMatch").classList.toggle("active", tab === "taste");
+      document.getElementById("tabNotifications").classList.toggle("active", tab === "notifications");
+
+      document.getElementById("myCatalogSection").style.display = tab === "my" ? "block" : "none";
+      document.getElementById("friendsFeedSection").style.display = tab === "feed" ? "block" : "none";
+      document.getElementById("tasteMatchSection").style.display = tab === "taste" ? "block" : "none";
+      document.getElementById("notificationsSection").style.display = tab === "notifications" ? "block" : "none";
+
+      if (tab === "my") renderMyMovies();
+      if (tab === "feed") renderFriendsFeed();
+      if (tab === "taste") renderTasteMatch();
+      if (tab === "notifications") renderNotifications();
+    }
+
+    document.getElementById("tabMyCatalog").addEventListener("click", () => switchMainTab("my"));
+    document.getElementById("tabFriendsFeed").addEventListener("click", () => switchMainTab("feed"));
+    document.getElementById("tabTasteMatch").addEventListener("click", () => switchMainTab("taste"));
+    document.getElementById("tabNotifications").addEventListener("click", () => switchMainTab("notifications"));
+
+    document.getElementById("openProfileBtn").addEventListener("click", () => openProfileModal());
+    document.getElementById("menuProfileBtn").addEventListener("click", () => {
+      closeDropdownMenu();
+      openProfileModal();
+    });
+
+    document.getElementById("openFriendsModalBtn").addEventListener("click", () => openFriendsModal());
+    document.getElementById("menuFriendsBtn").addEventListener("click", () => {
+      closeDropdownMenu();
+      openFriendsModal();
+    });
+    document.getElementById("menuNotificationsBtn").addEventListener("click", () => {
+      closeDropdownMenu();
+      switchMainTab("notifications");
+    });
+
+    function applyCdModeUi() {
+      const cdEnabled = Boolean(profile.cd_mode);
+      document.getElementById("cdModeToggle").checked = cdEnabled;
+      document.getElementById("cdFormFields").style.display = cdEnabled ? "block" : "none";
+      document.getElementById("catalogTitle").textContent = cdEnabled
+        ? "Мой каталог фильмов и CD-архив"
+        : "Мой каталог просмотренных фильмов";
+
+      const toolbar = document.getElementById("toolbar");
+      toolbar.classList.toggle("no-cd", !cdEnabled);
+
+      const statusSelect = document.getElementById("filterStatus");
+      Array.from(statusSelect.options).forEach(opt => {
+        if (opt.dataset.cdOnly === "true") {
+          opt.hidden = !cdEnabled;
+          opt.disabled = !cdEnabled;
+        }
+      });
+      if (!cdEnabled && (statusSelect.value === "wait" || statusSelect.value === "done")) {
+        statusSelect.value = "all";
+      }
+    }
+
+    document.getElementById("cdModeToggle").addEventListener("change", async (e) => {
+      const nextValue = e.target.checked;
+      profile.cd_mode = nextValue;
+      applyCdModeUi();
+      renderMyMovies();
+
+      if (sb && currentUser) {
+        await sb
+          .from("profiles")
+          .update({ cd_mode: nextValue, updated_at: new Date().toISOString() })
+          .eq("id", currentUser.id);
+      }
+    });
+
+    function compressAvatarFile(file, maxSize = 256) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error("Не удалось прочитать файл изображения."));
+        reader.onload = () => {
+          const img = new Image();
+          img.onerror = () => reject(new Error("Выбран некорректный файл изображения."));
+          img.onload = () => {
+            const canvas = document.createElement("canvas");
+            canvas.width = maxSize;
+            canvas.height = maxSize;
+            const ctx = canvas.getContext("2d");
+
+            const side = Math.min(img.width, img.height);
+            const sx = (img.width - side) / 2;
+            const sy = (img.height - side) / 2;
+
+            ctx.drawImage(img, sx, sy, side, side, 0, 0, maxSize, maxSize);
+            resolve(canvas.toDataURL("image/jpeg", 0.82));
+          };
+          img.src = reader.result;
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function openProfileModal() {
+      renderProfileModalContent();
+      document.getElementById("profileModal").classList.add("open");
+    }
+
+    function renderProfileModalContent() {
+      const box = document.getElementById("profileModalContent");
+      const currentEmail = currentUser?.email || "";
+      const isPseudoEmail = currentEmail.endsWith("@catalog.local");
+
+      box.innerHTML = `
+        <div class="modal-top">
+          <h2 class="modal-title">Профиль и аккаунт</h2>
+          <button type="button" class="close-x" onclick="closeModal('profileModal')">✕ Закрыть</button>
+        </div>
+
+        <form id="profileDetailsForm">
+          <div class="avatar-editor-row">
+            <div id="modalAvatarPreview">${renderAvatarHtml(currentUser?.id, "avatar-lg")}</div>
+            <div class="avatar-editor-controls">
+              <div style="font-weight:600;font-size:14px;">Аватарка профиля</div>
+              <div class="status-tag">Картинка автоматически сжимается до 256×256 px. Если не задана — показываются инициалы.</div>
+              <div class="avatar-btns">
+                <label class="mini-btn" style="cursor:pointer;display:inline-flex;align-items:center;">
+                  <span>Загрузить фото</span>
+                  <input type="file" id="profileAvatarFile" accept="image/*" style="display:none;" />
+                </label>
+                <button type="button" class="secondary" id="clearAvatarBtn">Убрать фото</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="two-col" style="margin-top:12px;">
+            <div>
+              <label>Отображаемое имя *</label>
+              <input type="text" id="profDisplayName" required value="${escapeHtml(profile.display_name || "")}" placeholder="Например, Илья" />
+            </div>
+            <div>
+              <label>Ник / логин (латиница, цифры, _)</label>
+              <input type="text" id="profUsername" value="${escapeHtml(profile.username || "")}" placeholder="например, aqwaqq" />
+            </div>
+          </div>
+
+          <label>О себе / статус</label>
+          <textarea id="profBio" placeholder="Коротко о вкусах в кино или статусе...">${escapeHtml(profile.bio || "")}</textarea>
+
+          <label class="check-row" for="profDefaultPublic">
+            <input type="checkbox" id="profDefaultPublic" ${profile.default_public !== false ? "checked" : ""} />
+            <span>По умолчанию отмечать новые фильмы галочкой «Показывать в общей ленте»</span>
+          </label>
+
+          <label class="check-row" for="profCdMode">
+            <input type="checkbox" id="profCdMode" ${profile.cd_mode ? "checked" : ""} />
+            <span>Включить «Режим CD-архива» (поля диска и торрентов)</span>
+          </label>
+
+          <label class="check-row" for="profShowSplash">
+            <input type="checkbox" id="profShowSplash" ${profile.show_splash !== false ? "checked" : ""} />
+            <span>Показывать заставку при входе (в новой сессии)</span>
+          </label>
+
+          <button type="submit" id="saveProfileBtn">Сохранить профиль</button>
+          <div class="msg-line" id="profileSaveMsg"></div>
+        </form>
+
+        <div class="section-block">
+          <h3>Безопасность: почта и пароль</h3>
+          <div class="status-tag" style="margin-bottom:8px;">
+            Текущая почта в аккаунте: <strong>${escapeHtml(isPseudoEmail ? `${currentEmail.replace("@catalog.local", "")} (внутренний логин)` : currentEmail)}</strong>.
+            Для смены почты или пароля введите текущий пароль.
+          </div>
+
+          <form id="credentialsForm">
+            <label>Текущий пароль *</label>
+            <input type="password" id="credCurrentPassword" required placeholder="Введите текущий пароль для подтверждения" autocomplete="current-password" />
+
+            <div class="two-col">
+              <div>
+                <label>Новая почта (если хотите изменить)</label>
+                <input type="email" id="credNewEmail" value="${escapeHtml(isPseudoEmail ? "" : currentEmail)}" placeholder="new-mail@example.com" autocomplete="email" />
+              </div>
+              <div>
+                <label>Новый пароль (если хотите изменить)</label>
+                <input type="password" id="credNewPassword" minlength="6" placeholder="Минимум 6 символов" autocomplete="new-password" />
+              </div>
+            </div>
+
+            <button type="submit" class="secondary" id="saveCredBtn">Обновить почту / пароль</button>
+            <div class="msg-line" id="credSaveMsg"></div>
+          </form>
+        </div>
+      `;
+
+      let draftAvatar = profile.avatar_url || "";
+
+      function setProfileMsg(text, type = "") {
+        const el = document.getElementById("profileSaveMsg");
+        if (!el) return;
+        el.textContent = text;
+        el.className = "msg-line" + (type ? ` ${type}` : "");
+      }
+
+      function setCredMsg(text, type = "") {
+        const el = document.getElementById("credSaveMsg");
+        if (!el) return;
+        el.textContent = text;
+        el.className = "msg-line" + (type ? ` ${type}` : "");
+      }
+
+      document.getElementById("profileAvatarFile").addEventListener("change", async (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        try {
+          draftAvatar = await compressAvatarFile(file, 256);
+          const nameVal = document.getElementById("profDisplayName").value.trim() || profile.display_name;
+          document.getElementById("modalAvatarPreview").innerHTML =
+            `<span class="avatar-circle avatar-lg"><img src="${draftAvatar}" alt="${escapeHtml(nameVal)}" /></span>`;
+          setProfileMsg("Фото выбрано. Нажми «Сохранить профиль», чтобы применить.", "");
+        } catch (err) {
+          setProfileMsg(err.message || "Ошибка обработки фото.", "err");
+        }
+      });
+
+      document.getElementById("clearAvatarBtn").addEventListener("click", () => {
+        draftAvatar = "";
+        const nameVal = document.getElementById("profDisplayName").value.trim() || profile.display_name;
+        document.getElementById("modalAvatarPreview").innerHTML =
+          `<span class="avatar-circle avatar-lg">${escapeHtml(getInitials(nameVal))}</span>`;
+        setProfileMsg("Фото убрано. Нажми «Сохранить профиль», чтобы сохранить.", "");
+      });
+
+      document.getElementById("profileDetailsForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        if (!sb || !currentUser) return;
+
+        const nextDisplayName = document.getElementById("profDisplayName").value.trim();
+        const rawUsername = document.getElementById("profUsername").value.trim().toLowerCase().replace(/^@+/, "");
+        const nextBio = document.getElementById("profBio").value.trim();
+        const nextDefaultPublic = document.getElementById("profDefaultPublic").checked;
+        const nextCdMode = document.getElementById("profCdMode").checked;
+        const nextShowSplash = document.getElementById("profShowSplash").checked;
+
+        if (!nextDisplayName) {
+          setProfileMsg("Отображаемое имя не может быть пустым.", "err");
+          return;
+        }
+
+        if (rawUsername && !/^[a-z0-9._-]{2,24}$/.test(rawUsername)) {
+          setProfileMsg("Ник может содержать только латинские буквы, цифры, точку, дефис или подчёркивание (2–24 символа).", "err");
+          return;
+        }
+
+        const btn = document.getElementById("saveProfileBtn");
+        btn.disabled = true;
+        setProfileMsg("Сохраняем профиль...");
+
+        try {
+          if (rawUsername) {
+            const { data: takenRows, error: checkErr } = await sb
+              .from("profiles")
+              .select("id, username")
+              .ilike("username", rawUsername)
+              .neq("id", currentUser.id);
+
+            if (checkErr) throw checkErr;
+            if (takenRows && takenRows.length > 0) {
+              setProfileMsg(`Ник @${rawUsername} уже занят другим пользователем.`, "err");
+              btn.disabled = false;
+              return;
+            }
+          }
+
+          const updates = {
+            display_name: nextDisplayName,
+            username: rawUsername,
+            bio: nextBio,
+            avatar_url: draftAvatar,
+            default_public: nextDefaultPublic,
+            cd_mode: nextCdMode,
+            show_splash: nextShowSplash,
+            updated_at: new Date().toISOString()
+          };
+
+          const { error } = await sb
+            .from("profiles")
+            .update(updates)
+            .eq("id", currentUser.id);
+
+          if (error) throw error;
+
+          profile = { ...profile, ...updates };
+          profilesMap.set(currentUser.id, {
+            id: currentUser.id,
+            display_name: nextDisplayName,
+            username: rawUsername,
+            bio: nextBio,
+            avatar_url: draftAvatar,
+            default_public: nextDefaultPublic,
+            cd_mode: nextCdMode,
+            show_splash: nextShowSplash
+          });
+
+          if (!document.getElementById("editId").value) {
+            document.getElementById("publicFlag").checked = nextDefaultPublic;
+          }
+
+          updateHeaderProfileBadge();
+          applyCdModeUi();
+          await fetchAllCatalogData();
+          setProfileMsg("Профиль сохранён!", "ok");
+        } catch (err) {
+          setProfileMsg(err.message || "Не удалось сохранить профиль.", "err");
+        } finally {
+          btn.disabled = false;
+        }
+      });
+
+      document.getElementById("credentialsForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        if (!sb || !currentUser) return;
+
+        const currentPassword = document.getElementById("credCurrentPassword").value;
+        const newEmail = document.getElementById("credNewEmail").value.trim().toLowerCase();
+        const newPassword = document.getElementById("credNewPassword").value;
+
+        const emailChanged = Boolean(newEmail && newEmail !== (currentUser.email || "").toLowerCase());
+        const passwordChanged = Boolean(newPassword);
+
+        if (!emailChanged && !passwordChanged) {
+          setCredMsg("Укажи новую почту или новый пароль, который хочешь изменить.", "err");
+          return;
+        }
+
+        if (passwordChanged && newPassword.length < 6) {
+          setCredMsg("Новый пароль должен быть не короче 6 символов.", "err");
+          return;
+        }
+
+        const btn = document.getElementById("saveCredBtn");
+        btn.disabled = true;
+        setCredMsg("Проверяем текущий пароль...");
+
+        try {
+          const { error: reauthErr } = await sb.auth.signInWithPassword({
+            email: currentUser.email,
+            password: currentPassword
+          });
+          if (reauthErr) {
+            setCredMsg("Текущий пароль введён неверно.", "err");
+            btn.disabled = false;
+            return;
+          }
+
+          const payload = {};
+          if (emailChanged) payload.email = newEmail;
+          if (passwordChanged) payload.password = newPassword;
+
+          const { data: updData, error: updErr } = await sb.auth.updateUser(payload);
+          if (updErr) throw updErr;
+
+          if (updData?.user) currentUser = updData.user;
+          document.getElementById("credCurrentPassword").value = "";
+          document.getElementById("credNewPassword").value = "";
+
+          if (emailChanged) {
+            setCredMsg(
+              "Запрос на смену почты отправлен. Если включено подтверждение почты в Supabase — перейди по ссылке в письме для завершения.",
+              "ok"
+            );
+          } else {
+            setCredMsg("Пароль успешно обновлён!", "ok");
+          }
+        } catch (err) {
+          setCredMsg(err.message || "Не удалось обновить данные входа.", "err");
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    }
+
+    function mapRowToMovie(row) {
+      return {
+        id: row.id,
+        userId: row.user_id,
+        authorName: getUserName(row.user_id),
+        title: row.title || "",
+        releaseYear: row.release_year || "",
+        duration: row.duration || "",
+        country: row.country || "",
+        genre: row.genre || "",
+        director: row.director || "",
+        cast: row.cast_members || "",
+        watchedDate: row.watched_date || "",
+        rating: row.rating ?? 7,
+        isPublic: row.is_public !== false,
+        rewatch: Boolean(row.rewatch),
+        cdStatus: row.cd_status || "wait",
+        cdLabel: row.cd_label || "",
+        torrent: row.torrent || "",
+        cover: row.cover || "",
+        plot: row.plot || "",
+        description: row.description || "",
+        createdAt: row.created_at || ""
+      };
+    }
+
+    function mapMovieToRow(movieData, userId) {
+      return {
+        user_id: userId,
+        title: movieData.title,
+        release_year: movieData.releaseYear,
+        duration: movieData.duration,
+        country: movieData.country,
+        genre: movieData.genre,
+        director: movieData.director,
+        cast_members: movieData.cast,
+        watched_date: movieData.watchedDate,
+        rating: movieData.rating,
+        is_public: movieData.isPublic,
+        rewatch: movieData.rewatch,
+        cd_status: movieData.cdStatus,
+        cd_label: movieData.cdLabel,
+        torrent: movieData.torrent,
+        cover: movieData.cover,
+        plot: movieData.plot,
+        description: movieData.description
+      };
+    }
+
+    async function createNotification(targetUserId, type, payload = {}) {
+      if (!sb || !currentUser || !targetUserId || targetUserId === currentUser.id) return;
+      await sb.from("notifications").insert({
+        user_id: targetUserId,
+        actor_id: currentUser.id,
+        type,
+        payload,
+        is_read: false
+      });
+    }
+
+    function updateFriendSuggestionsAndFilters() {
+      const friendPool = getFriendMoviesPool();
+      const datalist = document.getElementById("friendMoviesDatalist");
+      const seenLabels = new Set();
+      const optionsHtml = [];
+
+      friendPool.forEach(fm => {
+        const label = fm.releaseYear ? `${fm.title} (${fm.releaseYear})` : fm.title;
+        if (!seenLabels.has(label.toLowerCase())) {
+          seenLabels.add(label.toLowerCase());
+          optionsHtml.push(`<option value="${escapeHtml(fm.title)}" label="${escapeHtml(label)}"></option>`);
+        }
+      });
+      datalist.innerHTML = optionsHtml.join("");
+
+      const friendSelect = document.getElementById("feedFriendFilter");
+      const prevFriend = friendSelect.value;
+      const friendIds = Array.from(getConfirmedFriendIds());
+
+      friendSelect.innerHTML = `<option value="all">Все друзья</option>` + friendIds.map(uid => {
+        return `<option value="${escapeHtml(uid)}">${escapeHtml(getUserName(uid))}</option>`;
+      }).join("");
+
+      if (Array.from(friendSelect.options).some(o => o.value === prevFriend)) {
+        friendSelect.value = prevFriend;
+      } else {
+        friendSelect.value = "all";
+      }
+    }
+
+    async function fetchAllCatalogData() {
+      if (!sb || !currentUser) return;
+
+      const [profilesRes, moviesRes, reqRes, notifRes] = await Promise.all([
+        sb.from("profiles").select("id, display_name, username, bio, avatar_url, default_public, cd_mode, show_splash"),
+        sb.from("movies").select("*").order("created_at", { ascending: false }),
+        sb
+          .from("friend_requests")
+          .select("*")
+          .or(`sender_id.eq.${currentUser.id},receiver_id.eq.${currentUser.id}`)
+          .order("created_at", { ascending: false }),
+        sb
+          .from("notifications")
+          .select("*")
+          .eq("user_id", currentUser.id)
+          .order("created_at", { ascending: false })
+      ]);
+
+      profilesMap = new Map();
+      (profilesRes.data || []).forEach(p => {
+        profilesMap.set(p.id, {
+          id: p.id,
+          display_name: p.display_name || "Друг",
+          username: p.username || "",
+          bio: p.bio || "",
+          avatar_url: p.avatar_url || "",
+          default_public: p.default_public !== false,
+          cd_mode: Boolean(p.cd_mode),
+          show_splash: p.show_splash !== false
+        });
+      });
+
+      const ownFromDb = profilesMap.get(currentUser.id);
+      if (ownFromDb) {
+        profile = { ...ownFromDb };
+      } else {
+        profilesMap.set(currentUser.id, { id: currentUser.id, ...profile });
+      }
+
+      updateHeaderProfileBadge();
+      friendRequests = reqRes.data || [];
+      notifications = notifRes.data || [];
+
+      if (moviesRes.error) {
+        alert("Не удалось загрузить каталог из облака: " + moviesRes.error.message);
+        return;
+      }
+
+      const mapped = (moviesRes.data || []).map(mapRowToMovie);
+      myMovies = mapped.filter(m => m.userId === currentUser.id);
+      allPublicOtherMovies = mapped.filter(m => m.userId !== currentUser.id && m.isPublic);
+
+      updateBadges();
+      updateFriendSuggestionsAndFilters();
+      renderMyMovies();
+      if (activeTab === "feed") renderFriendsFeed();
+      if (activeTab === "taste") renderTasteMatch();
+      if (activeTab === "notifications") renderNotifications();
+      if (document.getElementById("friendsModal").classList.contains("open")) renderFriendsModalContent();
+    }
+
+    function renderStarPicker() {
+      starsContainer.innerHTML = "";
+      for (let i = 1; i <= 10; i++) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "star-btn" + (i <= currentRating ? " active" : "");
+        btn.textContent = "★";
+        btn.title = `${i} из 10`;
+        btn.onclick = () => {
+          currentRating = i;
+          ratingValue.textContent = i;
+          renderStarPicker();
+        };
+        starsContainer.appendChild(btn);
+      }
+    }
+
+    document.getElementById("coverFile").addEventListener("change", (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => { currentCoverDataUrl = reader.result; };
+      reader.readAsDataURL(file);
+    });
+
+    function openTorrent(source) {
+      if (!source) {
+        alert("Для этого фильма пока не указан торрент.");
+        return;
+      }
+      if (source.startsWith("magnet:") || /^https?:\/\//i.test(source)) {
+        window.open(source, "_blank", "noopener,noreferrer");
+      } else {
+        navigator.clipboard?.writeText(source);
+        alert("Скопировано в буфер обмена:\n" + source);
+      }
+    }
+
+    function formatDateTime(iso) {
+      if (!iso) return "";
+      const d = new Date(iso);
+      if (Number.isNaN(d.getTime())) return "";
+      return d.toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+    }
+
+    function updateGenreFilterOptions() {
+      const genreSelect = document.getElementById("filterGenre");
+      const previousValue = genreSelect.value;
+      const genreSet = new Set();
+
+      myMovies.forEach(m => {
+        if (!m.genre) return;
+        m.genre.split(",").forEach(part => {
+          const clean = part.trim();
+          if (clean) genreSet.add(clean.toLowerCase());
+        });
+      });
+
+      const sortedGenres = Array.from(genreSet).sort((a, b) => a.localeCompare(b, "ru"));
+      genreSelect.innerHTML = `<option value="all">Все жанры</option>` + sortedGenres.map(g => {
+        const label = g.charAt(0).toUpperCase() + g.slice(1);
+        return `<option value="${escapeHtml(g)}">${escapeHtml(label)}</option>`;
+      }).join("");
+
+      if (Array.from(genreSelect.options).some(opt => opt.value === previousValue)) {
+        genreSelect.value = previousValue;
+      } else {
+        genreSelect.value = "all";
+      }
+    }
+
+    function updateStats() {
+      const total = myMovies.length;
+      const rewatchCount = myMovies.filter(m => Boolean(m.rewatch)).length;
+      if (profile.cd_mode) {
+        const doneCount = myMovies.filter(m => m.cdStatus === "done").length;
+        const waitCount = total - doneCount;
+        document.getElementById("statsText").textContent =
+          `Фильмов: ${total} · Записано на CD: ${doneCount} · Не записано: ${waitCount} · Пересмотреть: ${rewatchCount}`;
+      } else {
+        document.getElementById("statsText").textContent =
+          `Фильмов: ${total} · Пересмотреть: ${rewatchCount}`;
+      }
+    }
+
+    function openMovieDetails(id, sourceList = "my") {
+      const pool = sourceList === "feed" ? allPublicOtherMovies : myMovies;
+      const m = pool.find(item => item.id === id);
+      if (!m) return;
+
+      const isOwn = m.userId === currentUser?.id;
+      const showCdInModal = isOwn && Boolean(profile.cd_mode);
+      const isDone = m.cdStatus === "done";
+      const cdInfo = isDone
+        ? `Записан на CD${m.cdLabel ? ` (${escapeHtml(m.cdLabel)})` : ""}`
+        : `Ожидает записи на CD${m.cdLabel ? ` (${escapeHtml(m.cdLabel)})` : ""}`;
+
+      const alsoWatched = isOwn ? findFriendMatchesForMovie(m) : [];
+      const alsoText = alsoWatched.length
+        ? alsoWatched.map(f => `${escapeHtml(f.authorName)} (${f.rating}/10)`).join(", ")
+        : "";
+
+      const modalContent = document.getElementById("modalContent");
+      modalContent.innerHTML = `
+        <div class="modal-top">
+          <h2 class="modal-title">${escapeHtml(m.title)}${m.releaseYear ? ` <span style="color:var(--muted);font-weight:500;">(${escapeHtml(m.releaseYear)})</span>` : ""}</h2>
+          <button type="button" class="close-x" onclick="closeModal('movieModal')">✕ Закрыть</button>
+        </div>
+
+        <div class="kp-layout">
+          <div class="kp-poster">
+            ${m.cover ? `<img src="${m.cover}" alt="${escapeHtml(m.title)}" />` : "Нет обложки"}
+          </div>
+
+          <div>
+            ${!isOwn ? `
+              <div class="author-line" style="margin-bottom:8px;">
+                ${renderAvatarHtml(m.userId, "avatar-sm")}
+                <span>Автор записи: <strong style="color:var(--text)">${escapeHtml(m.authorName)}</strong></span>
+              </div>
+            ` : ""}
+            <div class="rating-text" style="font-size:15px;margin-bottom:8px;">
+              Оценка: ${"★".repeat(m.rating || 0)}${"☆".repeat(10 - (m.rating || 0))} (${m.rating || 0}/10)
+            </div>
+            ${isOwn && m.rewatch ? `<div style="margin-bottom:10px;"><span class="badge rewatch" style="position:static;">В планах / Пересмотреть</span></div>` : ""}
+
+            <table class="kp-table">
+              <tr><td class="kp-key">Год производства</td><td>${escapeHtml(m.releaseYear || "—")}</td></tr>
+              <tr><td class="kp-key">Страна</td><td>${escapeHtml(m.country || "—")}</td></tr>
+              <tr><td class="kp-key">Жанр</td><td>${escapeHtml(m.genre || "—")}</td></tr>
+              <tr><td class="kp-key">Режиссёр</td><td>${escapeHtml(m.director || "—")}</td></tr>
+              <tr><td class="kp-key">В главных ролях</td><td>${escapeHtml(m.cast || "—")}</td></tr>
+              <tr><td class="kp-key">Время</td><td>${escapeHtml(m.duration || "—")}</td></tr>
+              <tr><td class="kp-key">Дата просмотра</td><td>${escapeHtml(m.watchedDate || "—")}</td></tr>
+              ${showCdInModal ? `<tr><td class="kp-key">Архив CD</td><td>${cdInfo}</td></tr>` : ""}
+            </table>
+
+            ${alsoText ? `<div class="also-watched" style="margin-top:12px;"><strong>Смотрели также:</strong> ${alsoText}</div>` : ""}
+          </div>
+        </div>
+
+        <div class="kp-section">
+          <h3>О фильме (сюжет)</h3>
+          <div class="desc" style="font-size:14px;">
+            ${m.plot ? escapeHtml(m.plot).replace(/\n/g, "<br>") : "<span style='color:var(--muted)'>Описание сюжета пока не заполнено.</span>"}
+          </div>
+        </div>
+
+        ${m.description ? `
+          <div class="kp-section">
+            <h3>${isOwn ? "Личная заметка" : "Отзыв"}</h3>
+            <div class="kp-note">${escapeHtml(m.description).replace(/\n/g, "<br>")}</div>
+          </div>
+        ` : ""}
+
+        <div class="actions" style="margin-top:18px;">
+          ${showCdInModal ? `<button type="button" onclick="openTorrentById('${m.id}')">Открыть торрент</button>` : ""}
+          ${isOwn ? `<button type="button" class="secondary small-btn" onclick="closeModal('movieModal'); startEditMovie('${m.id}')">Изменить</button>` : ""}
+        </div>
+      `;
+
+      document.getElementById("movieModal").classList.add("open");
+    }
+
+    function closeModal(modalId) {
+      document.getElementById(modalId).classList.remove("open");
+    }
+
+    function handleBackdropClick(e, modalId) {
+      if (e.target.id === modalId) closeModal(modalId);
+    }
+
+    document.addEventListener("keydown", (e) => {
+      if (isSplashOpen() && ["Enter", " ", "Escape"].includes(e.key)) {
+        e.preventDefault();
+        hideSplash();
+        return;
+      }
+      if (e.key === "Escape") {
+        closeModal("movieModal");
+        closeModal("friendsModal");
+        closeModal("profileModal");
+        closeDropdownMenu();
+      }
+    });
+
+    function renderMyMovies() {
+      updateStats();
+      updateGenreFilterOptions();
+
+      const q = document.getElementById("searchInput").value.trim().toLowerCase();
+      const statusFilter = document.getElementById("filterStatus").value;
+      const genreFilter = document.getElementById("filterGenre").value;
+      const ratingFilter = document.getElementById("filterRating").value;
+      const sortBy = document.getElementById("sortBy").value;
+      const grid = document.getElementById("moviesGrid");
+
+      let list = myMovies.filter(m => {
+        const matchesTitle = (m.title || "").toLowerCase().includes(q);
+
+        let matchesStatus = true;
+        if (statusFilter === "wait") matchesStatus = (m.cdStatus || "wait") !== "done";
+        else if (statusFilter === "done") matchesStatus = m.cdStatus === "done";
+        else if (statusFilter === "rewatch") matchesStatus = Boolean(m.rewatch);
+
+        const genresList = (m.genre || "").split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
+        const matchesGenre = genreFilter === "all" || genresList.includes(genreFilter);
+
+        const minRating = ratingFilter === "all" ? 0 : Number(ratingFilter);
+        const matchesRating = (Number(m.rating) || 0) >= minRating;
+
+        return matchesTitle && matchesStatus && matchesGenre && matchesRating;
+      });
+
+      if (sortBy === "rating_desc") list.sort((a, b) => (b.rating || 0) - (a.rating || 0));
+      else if (sortBy === "watched_desc") list.sort((a, b) => (b.watchedDate || "").localeCompare(a.watchedDate || ""));
+
+      if (!list.length) {
+        grid.innerHTML = `<div class="card"><div class="desc">Подходящих фильмов пока нет. Добавь новый слева или сбрось фильтры.</div></div>`;
+        return;
+      }
+
+      grid.innerHTML = list.map(m => {
+        const isDone = m.cdStatus === "done";
+        const badgeClass = isDone ? "badge done" : "badge wait";
+        const badgeText = isDone
+          ? (m.cdLabel ? `Записан (${escapeHtml(m.cdLabel)})` : "Записан на CD")
+          : "Ждёт CD";
+
+        const shortInfo = [m.releaseYear, m.genre].filter(Boolean).join(" · ");
+        const alsoWatched = findFriendMatchesForMovie(m);
+        const alsoText = alsoWatched.length
+          ? alsoWatched.map(f => `${escapeHtml(f.authorName)} (${f.rating}/10)`).join(", ")
+          : "";
+
+        return `
+          <article class="movie-card">
+            <div class="cover-box">
+              ${m.cover ? `<img src="${m.cover}" alt="${escapeHtml(m.title)}" />` : "Нет обложки"}
+              <div class="badges-top">
+                <div style="display:flex;gap:5px;flex-wrap:wrap;">
+                  ${m.rewatch ? `<span class="badge rewatch">Пересмотреть</span>` : ""}
+                  ${!m.isPublic ? `<span class="badge private">Скрыт из ленты</span>` : ""}
+                </div>
+                ${profile.cd_mode ? `<span class="${badgeClass}">${badgeText}</span>` : ""}
+              </div>
+            </div>
+            <div class="movie-body">
+              <div class="title-row">
+                <div class="movie-title" onclick="openMovieDetails('${m.id}', 'my')" title="Открыть описание фильма">
+                  ${escapeHtml(m.title)}
+                </div>
+                <button type="button" class="open-icon-btn" onclick="openMovieDetails('${m.id}', 'my')" title="Открыть карточку фильма" aria-label="Открыть карточку фильма">↗</button>
+              </div>
+              ${shortInfo ? `<div class="desc" style="color:var(--muted);font-size:12px;">${escapeHtml(shortInfo)}</div>` : ""}
+              <div class="meta">
+                <span>Просмотр: ${escapeHtml(m.watchedDate || "—")}</span>
+                ${profile.cd_mode ? `<span>Диск: ${escapeHtml(m.cdLabel || "не указан")}</span>` : ""}
+              </div>
+              <div class="rating-text">${"★".repeat(m.rating || 0)}${"☆".repeat(10 - (m.rating || 0))} (${m.rating || 0}/10)</div>
+              <div class="desc">${escapeHtml(m.description || m.plot || "")}</div>
+              ${alsoText ? `<div class="also-watched"><strong>Смотрели также:</strong> ${alsoText}</div>` : ""}
+              <div class="actions">
+                ${profile.cd_mode ? `<button type="button" onclick="openTorrentById('${m.id}')">Торрент</button>` : ""}
+                <button type="button" class="secondary small-btn" onclick="startEditMovie('${m.id}')">Изменить</button>
+                <button type="button" class="danger small-btn" onclick="deleteMovie('${m.id}')">Удалить</button>
+              </div>
+            </div>
+          </article>
+        `;
+      }).join("");
+    }
+
+    function renderFriendsFeed() {
+      const q = document.getElementById("feedSearchInput").value.trim().toLowerCase();
+      const friendId = document.getElementById("feedFriendFilter").value;
+      const scope = document.getElementById("feedScopeFilter").value;
+      const sortBy = document.getElementById("feedSortBy").value;
+      const grid = document.getElementById("friendsFeedGrid");
+      const friendIds = getConfirmedFriendIds();
+
+      let baseList = scope === "all_public"
+        ? allPublicOtherMovies
+        : allPublicOtherMovies.filter(m => friendIds.has(m.userId));
+
+      let list = baseList.filter(m => {
+        const matchesTitle = (m.title || "").toLowerCase().includes(q);
+        const matchesFriend = friendId === "all" || m.userId === friendId;
+        return matchesTitle && matchesFriend;
+      });
+
+      if (sortBy === "rating_desc") list.sort((a, b) => (b.rating || 0) - (a.rating || 0));
+      else if (sortBy === "watched_desc") list.sort((a, b) => (b.watchedDate || "").localeCompare(a.watchedDate || ""));
+
+      if (!list.length) {
+        const noFriendsYet = scope !== "all_public" && friendIds.size === 0;
+        grid.innerHTML = `
+          <div class="card">
+            <div class="desc">
+              ${noFriendsYet
+                ? "У тебя пока нет подтверждённых друзей — добавь друзей или переключи область на «Все публичные записи»."
+                : "В ленте пока нет подходящих публичных фильмов."}
+            </div>
+            ${noFriendsYet ? `<button type="button" class="empty-cta-btn" onclick="openFriendsModal()">Добавить друга</button>` : ""}
+          </div>
+        `;
+        return;
+      }
+
+      grid.innerHTML = list.map(m => {
+        const shortInfo = [m.releaseYear, m.genre].filter(Boolean).join(" · ");
+        return `
+          <article class="movie-card">
+            <div class="cover-box">
+              ${m.cover ? `<img src="${m.cover}" alt="${escapeHtml(m.title)}" />` : "Нет обложки"}
+            </div>
+            <div class="movie-body">
+              <div class="title-row">
+                <div class="movie-title" onclick="openMovieDetails('${m.id}', 'feed')" title="Открыть описание фильма">
+                  ${escapeHtml(m.title)}
+                </div>
+                <button type="button" class="open-icon-btn" onclick="openMovieDetails('${m.id}', 'feed')" title="Открыть карточку фильма" aria-label="Открыть карточку фильма">↗</button>
+              </div>
+              ${shortInfo ? `<div class="desc" style="color:var(--muted);font-size:12px;">${escapeHtml(shortInfo)}</div>` : ""}
+              <div class="meta">
+                <span class="author-line">
+                  ${renderAvatarHtml(m.userId, "avatar-sm")}
+                  <strong style="color:var(--text)">${escapeHtml(m.authorName)}</strong>
+                </span>
+                <span>Просмотр: ${escapeHtml(m.watchedDate || "—")}</span>
+              </div>
+              <div class="rating-text">${"★".repeat(m.rating || 0)}${"☆".repeat(10 - (m.rating || 0))} (${m.rating || 0}/10)</div>
+              <div class="desc">${escapeHtml(m.description || m.plot || "Без отзыва")}</div>
+            </div>
+          </article>
+        `;
+      }).join("");
+    }
+
+    function renderTasteMatch() {
+      const container = document.getElementById("tasteMatchBody");
+      const friendIds = Array.from(getConfirmedFriendIds());
+
+      if (!friendIds.length) {
+        container.innerHTML = `
+          <h2>Совпадение вкусов</h2>
+          <div class="desc" style="color:var(--muted);">Добавь друзей в список, чтобы сравнивать оценки по общим фильмам и получать рекомендации.</div>
+          <button type="button" class="empty-cta-btn" onclick="openFriendsModal()">Добавить друга</button>
+        `;
+        return;
+      }
+
+      if (!selectedTasteFriendId || !friendIds.includes(selectedTasteFriendId)) {
+        selectedTasteFriendId = friendIds[0];
+      }
+
+      const friendMovies = allPublicOtherMovies.filter(m => m.userId === selectedTasteFriendId);
+      const friendName = getUserName(selectedTasteFriendId);
+
+      const sharedPairs = [];
+      myMovies.forEach(mine => {
+        const match = friendMovies.find(fm => {
+          const k1 = getMovieMatchKey(mine.title, mine.releaseYear);
+          const k2 = getMovieMatchKey(fm.title, fm.releaseYear);
+          if (k1 && k2 && k1 === k2) return true;
+          if (!normalizeYearPart(mine.releaseYear) || !normalizeYearPart(fm.releaseYear)) {
+            return normalizeTitlePart(mine.title) === normalizeTitlePart(fm.title);
+          }
+          return false;
+        });
+        if (match) sharedPairs.push({ mine, friend: match });
+      });
+
+      let matchPercent = null;
+      if (sharedPairs.length > 0) {
+        const avgDiff =
+          sharedPairs.reduce((acc, pair) => acc + Math.abs((Number(pair.mine.rating) || 0) - (Number(pair.friend.rating) || 0)), 0) /
+          sharedPairs.length;
+        matchPercent = Math.max(0, Math.round((1 - avgDiff / 9) * 100));
+      }
+
+      const myTitleSet = new Set(myMovies.map(m => normalizeTitlePart(m.title)).filter(Boolean));
+      const myKeySet = new Set(myMovies.map(m => getMovieMatchKey(m.title, m.releaseYear)).filter(Boolean));
+
+      const recommendations = friendMovies.filter(fm => {
+        if ((Number(fm.rating) || 0) < 8) return false;
+        const fKey = getMovieMatchKey(fm.title, fm.releaseYear);
+        const fTitle = normalizeTitlePart(fm.title);
+        if (fKey && myKeySet.has(fKey)) return false;
+        if (fTitle && myTitleSet.has(fTitle)) return false;
+        return true;
+      });
+
+      container.innerHTML = `
+        <div class="taste-top">
+          <div>
+            <h2 style="margin-bottom:4px;">Совпадение вкусов</h2>
+            <div class="desc" style="color:var(--muted);font-size:12px;">Сравнение оценок по общим фильмам и советы, что посмотреть дальше.</div>
+          </div>
+
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            ${renderAvatarHtml(selectedTasteFriendId, "avatar-md")}
+            <select class="taste-friend-select" id="tasteFriendSelect">
+              ${friendIds.map(uid => `<option value="${escapeHtml(uid)}" ${uid === selectedTasteFriendId ? "selected" : ""}>${escapeHtml(getUserName(uid))}</option>`).join("")}
+            </select>
+          </div>
+
+          <div class="match-score-box">
+            <div class="match-percent">${matchPercent !== null ? `${matchPercent}%` : "—"}</div>
+            <div class="match-sub">совпадение<br>общих фильмов: ${sharedPairs.length}</div>
+          </div>
+        </div>
+
+        <h3>Общие фильмы (${sharedPairs.length})</h3>
+        <div class="compare-list">
+          ${sharedPairs.length ? sharedPairs.map(pair => `
+            <div class="compare-row">
+              <div>
+                <strong>${escapeHtml(pair.mine.title)}</strong>
+                ${pair.mine.releaseYear ? `<span style="color:var(--muted);"> (${escapeHtml(pair.mine.releaseYear)})</span>` : ""}
+              </div>
+              <div class="compare-scores">
+                <span>Ты: ${pair.mine.rating}/10</span>
+                <span>${escapeHtml(friendName)}: ${pair.friend.rating}/10</span>
+              </div>
+            </div>
+          `).join("") : `<div class="desc" style="color:var(--muted);">Общих просмотренных фильмов с ${escapeHtml(friendName)} пока нет.</div>`}
+        </div>
+
+        <h3>Рекомендации от ${escapeHtml(friendName)} (оценка 8–10/10, у тебя ещё нет)</h3>
+        <div class="compare-list">
+          ${recommendations.length ? recommendations.map(rec => `
+            <div class="compare-row">
+              <div>
+                <strong>${escapeHtml(rec.title)}</strong>
+                ${rec.releaseYear ? `<span style="color:var(--muted);"> (${escapeHtml(rec.releaseYear)})</span>` : ""}
+                ${rec.genre ? `<span style="color:var(--muted);font-size:12px;"> · ${escapeHtml(rec.genre)}</span>` : ""}
+              </div>
+              <div class="compare-scores">
+                <span>${escapeHtml(friendName)}: ${rec.rating}/10 ★</span>
+              </div>
+            </div>
+          `).join("") : `<div class="desc" style="color:var(--muted);">Новых рекомендаций с оценкой 8–10 от ${escapeHtml(friendName)} сейчас нет.</div>`}
+        </div>
+      `;
+
+      document.getElementById("tasteFriendSelect").addEventListener("change", (e) => {
+        selectedTasteFriendId = e.target.value;
+        renderTasteMatch();
+      });
+    }
+
+    function findExistingRelation(targetUserId) {
+      if (!currentUser) return null;
+      return friendRequests.find(
+        r =>
+          (r.sender_id === currentUser.id && r.receiver_id === targetUserId) ||
+          (r.sender_id === targetUserId && r.receiver_id === currentUser.id)
+      ) || null;
+    }
+
+    async function sendFriendRequest(targetUserId) {
+      if (!sb || !currentUser || !targetUserId) return;
+      if (targetUserId === currentUser.id) {
+        friendSearchFeedback = "Нельзя добавить самого себя.";
+        renderFriendsModalContent();
+        return;
+      }
+
+      const existing = findExistingRelation(targetUserId);
+      if (existing) {
+        if (existing.status === "accepted") {
+          friendSearchFeedback = "Этот пользователь уже у тебя в друзьях.";
+        } else if (existing.status === "pending") {
+          friendSearchFeedback = existing.sender_id === currentUser.id
+            ? "Заявка уже отправлена и ожидает ответа."
+            : "Этот пользователь уже отправил тебе заявку — прими её во входящих.";
+        } else {
+          const { error } = await sb
+            .from("friend_requests")
+            .update({ sender_id: currentUser.id, receiver_id: targetUserId, status: "pending", updated_at: new Date().toISOString() })
+            .eq("id", existing.id);
+          if (error) {
+            friendSearchFeedback = "Не удалось отправить заявку: " + error.message;
+            renderFriendsModalContent();
+            return;
+          }
+          await createNotification(targetUserId, "friend_request", { request_id: existing.id });
+          friendSearchFeedback = "Заявка в друзья отправлена!";
+          await fetchAllCatalogData();
+          return;
+        }
+        renderFriendsModalContent();
+        return;
+      }
+
+      const { data, error } = await sb
+        .from("friend_requests")
+        .insert({ sender_id: currentUser.id, receiver_id: targetUserId, status: "pending" })
+        .select("*")
+        .single();
+
+      if (error) {
+        friendSearchFeedback = "Не удалось отправить заявку: " + error.message;
+        renderFriendsModalContent();
+        return;
+      }
+
+      await createNotification(targetUserId, "friend_request", { request_id: data.id });
+      friendSearchFeedback = `Заявка отправлена пользователю «${getUserName(targetUserId)}».`;
+      await fetchAllCatalogData();
+    }
+
+    window.respondFriendRequest = async (requestId, nextStatus) => {
+      if (!sb || !currentUser) return;
+      const req = friendRequests.find(r => r.id === requestId);
+      if (!req) return;
+
+      const { error } = await sb
+        .from("friend_requests")
+        .update({ status: nextStatus, updated_at: new Date().toISOString() })
+        .eq("id", requestId);
+
+      if (error) {
+        alert("Не удалось обновить заявку: " + error.message);
+        return;
+      }
+
+      if (nextStatus === "accepted") {
+        await createNotification(req.sender_id, "friend_accepted", { request_id: requestId });
+      }
+
+      await fetchAllCatalogData();
+    };
+
+    window.cancelFriendRequest = async (requestId) => {
+      if (!sb || !currentUser) return;
+      const { error } = await sb.from("friend_requests").delete().eq("id", requestId);
+      if (error) {
+        alert("Не удалось отменить заявку: " + error.message);
+        return;
+      }
+      await fetchAllCatalogData();
+    };
+
+    window.removeFriend = async (friendUserId) => {
+      if (!sb || !currentUser) return;
+      const rel = findExistingRelation(friendUserId);
+      if (!rel) return;
+
+      const { error } = await sb.from("friend_requests").delete().eq("id", rel.id);
+      if (error) {
+        alert("Не удалось удалить из друзей: " + error.message);
+        return;
+      }
+      await fetchAllCatalogData();
+    };
+
+    window.jumpToFriendFeed = (friendUserId) => {
+      closeModal("friendsModal");
+      document.getElementById("feedScopeFilter").value = "friends";
+      document.getElementById("feedFriendFilter").value = friendUserId;
+      switchMainTab("feed");
+    };
+
+    window.jumpToFriendTaste = (friendUserId) => {
+      closeModal("friendsModal");
+      selectedTasteFriendId = friendUserId;
+      switchMainTab("taste");
+    };
+
+    function openFriendsModal() {
+      friendSearchFeedback = "";
+      renderFriendsModalContent();
+      document.getElementById("friendsModal").classList.add("open");
+    }
+
+    function renderFriendsModalContent() {
+      const box = document.getElementById("friendsModalContent");
+      const incoming = friendRequests.filter(r => r.receiver_id === currentUser?.id && r.status === "pending");
+      const outgoing = friendRequests.filter(r => r.sender_id === currentUser?.id && r.status === "pending");
+      const friendIds = Array.from(getConfirmedFriendIds());
+
+      const q = friendSearchQuery.trim().toLowerCase().replace(/^@+/, "");
+      const searchMatches = q
+        ? Array.from(profilesMap.values()).filter(
+            p =>
+              p.id !== currentUser?.id &&
+              ((p.display_name || "").toLowerCase().includes(q) || (p.username || "").toLowerCase().includes(q))
+          )
+        : [];
+
+      box.innerHTML = `
+        <div class="modal-top">
+          <h2 class="modal-title">Друзья (${friendIds.length})</h2>
+          <button type="button" class="close-x" onclick="closeModal('friendsModal')">✕ Закрыть</button>
+        </div>
+
+        <label>Поиск пользователя по имени или @нику</label>
+        <div class="search-friend-row">
+          <input type="text" id="friendSearchInput" value="${escapeHtml(friendSearchQuery)}" placeholder="Введи имя или ник друга..." />
+          <button type="button" id="friendSearchBtn">Найти</button>
+        </div>
+        ${friendSearchFeedback ? `<div class="status-tag" style="margin-top:8px;color:var(--text);">${escapeHtml(friendSearchFeedback)}</div>` : ""}
+
+        ${q ? `
+          <div class="list-stack" style="margin-top:10px;">
+            ${searchMatches.length ? searchMatches.map(u => {
+              const rel = findExistingRelation(u.id);
+              let actionHtml = `<button type="button" onclick="sendFriendRequestById('${u.id}')">Отправить заявку</button>`;
+              if (rel?.status === "accepted") actionHtml = `<span class="status-tag">Уже в друзьях</span>`;
+              else if (rel?.status === "pending" && rel.sender_id === currentUser?.id) actionHtml = `<span class="status-tag">Ожидает ответа</span>`;
+              else if (rel?.status === "pending") actionHtml = `<button type="button" onclick="respondFriendRequest('${rel.id}', 'accepted')">Принять</button>`;
+
+              return `
+                <div class="item-row">
+                  <div class="user-inline">
+                    ${renderAvatarHtml(u.id, "avatar-md")}
+                    <div>
+                      <strong>${escapeHtml(u.display_name)}</strong>
+                      ${u.username ? `<div class="status-tag">@${escapeHtml(u.username)}</div>` : ""}
+                    </div>
+                  </div>
+                  <div class="item-actions">${actionHtml}</div>
+                </div>
+              `;
+            }).join("") : `<div class="status-tag">Пользователь с таким именем или ником не найден.</div>`}
+          </div>
+        ` : ""}
+
+        <div class="section-block">
+          <h3>Входящие заявки (${incoming.length})</h3>
+          <div class="list-stack">
+            ${incoming.length ? incoming.map(r => `
+              <div class="item-row">
+                <div class="user-inline">
+                  ${renderAvatarHtml(r.sender_id, "avatar-md")}
+                  <div><strong>${escapeHtml(getUserName(r.sender_id))}</strong> <span class="status-tag">хочет добавить вас в друзья</span></div>
+                </div>
+                <div class="item-actions">
+                  <button type="button" onclick="respondFriendRequest('${r.id}', 'accepted')">Принять</button>
+                  <button type="button" class="danger" onclick="respondFriendRequest('${r.id}', 'rejected')">Отклонить</button>
+                </div>
+              </div>
+            `).join("") : `<div class="status-tag">Входящих заявок нет.</div>`}
+          </div>
+        </div>
+
+        <div class="section-block">
+          <h3>Исходящие заявки (${outgoing.length})</h3>
+          <div class="list-stack">
+            ${outgoing.length ? outgoing.map(r => `
+              <div class="item-row">
+                <div class="user-inline">
+                  ${renderAvatarHtml(r.receiver_id, "avatar-md")}
+                  <div><strong>${escapeHtml(getUserName(r.receiver_id))}</strong> <span class="status-tag">· Ожидает ответа</span></div>
+                </div>
+                <div class="item-actions">
+                  <button type="button" class="secondary" onclick="cancelFriendRequest('${r.id}')">Отменить заявку</button>
+                </div>
+              </div>
+            `).join("") : `<div class="status-tag">Исходящих заявок нет.</div>`}
+          </div>
+        </div>
+
+        <div class="section-block">
+          <h3>Список друзей (${friendIds.length})</h3>
+          <div class="list-stack">
+            ${friendIds.length ? friendIds.map(fid => {
+              const fp = profilesMap.get(fid);
+              return `
+                <div class="item-row">
+                  <div class="user-inline">
+                    ${renderAvatarHtml(fid, "avatar-md")}
+                    <div>
+                      <strong>${escapeHtml(getUserName(fid))}</strong>
+                      ${fp?.username ? `<span class="status-tag"> @${escapeHtml(fp.username)}</span>` : ""}
+                      ${fp?.bio ? `<div class="status-tag">${escapeHtml(fp.bio)}</div>` : ""}
+                    </div>
+                  </div>
+                  <div class="item-actions">
+                    <button type="button" class="secondary" onclick="jumpToFriendFeed('${fid}')">Лента</button>
+                    <button type="button" class="secondary" onclick="jumpToFriendTaste('${fid}')">Вкусы</button>
+                    <button type="button" class="danger" onclick="removeFriend('${fid}')">Удалить из друзей</button>
+                  </div>
+                </div>
+              `;
+            }).join("") : `<div class="status-tag">Список друзей пока пуст.</div>`}
+          </div>
+        </div>
+      `;
+
+      const inputEl = document.getElementById("friendSearchInput");
+      const btnEl = document.getElementById("friendSearchBtn");
+      const runSearch = () => {
+        friendSearchQuery = inputEl.value;
+        friendSearchFeedback = "";
+        renderFriendsModalContent();
+        const nextInput = document.getElementById("friendSearchInput");
+        if (nextInput) {
+          nextInput.focus();
+          nextInput.setSelectionRange(nextInput.value.length, nextInput.value.length);
+        }
+      };
+      btnEl.addEventListener("click", runSearch);
+      inputEl.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          runSearch();
+        }
+      });
+    }
+
+    window.sendFriendRequestById = (uid) => sendFriendRequest(uid);
+
+    function renderNotifications() {
+      const box = document.getElementById("notificationsBody");
+      const unreadCount = notifications.filter(n => !n.is_read).length;
+
+      box.innerHTML = `
+        <div class="taste-top">
+          <div>
+            <h2 style="margin-bottom:4px;">Уведомления</h2>
+            <div class="desc" style="color:var(--muted);font-size:12px;">Непрочитанных: ${unreadCount}</div>
+          </div>
+          ${unreadCount > 0 ? `<button type="button" class="mini-btn" id="markAllReadBtn">Отметить всё прочитанным</button>` : ""}
+        </div>
+
+        <div class="list-stack">
+          ${notifications.length ? notifications.map(n => {
+            const actorName = getUserName(n.actor_id);
+            let text = "";
+            let actionHtml = "";
+
+            if (n.type === "friend_request") {
+              text = `<strong>${escapeHtml(actorName)}</strong> отправил(а) вам заявку в друзья.`;
+              const req = friendRequests.find(r => r.id === n.payload?.request_id && r.status === "pending");
+              if (req) {
+                actionHtml = `
+                  <button type="button" onclick="respondFriendRequest('${req.id}', 'accepted'); markNotificationRead('${n.id}')">Принять</button>
+                  <button type="button" class="danger" onclick="respondFriendRequest('${req.id}', 'rejected'); markNotificationRead('${n.id}')">Отклонить</button>
+                `;
+              } else {
+                actionHtml = `<button type="button" class="secondary" onclick="markNotificationRead('${n.id}'); openFriendsModal()">Открыть друзей</button>`;
+              }
+            } else if (n.type === "friend_accepted") {
+              text = `<strong>${escapeHtml(actorName)}</strong> принял(а) вашу заявку в друзья.`;
+              actionHtml = `<button type="button" class="secondary" onclick="markNotificationRead('${n.id}'); openFriendsModal()">К друзьям</button>`;
+            } else if (n.type === "friend_movie") {
+              const mTitle = n.payload?.movie_title || "фильм";
+              text = `<strong>${escapeHtml(actorName)}</strong> добавил(а) фильм «${escapeHtml(mTitle)}».`;
+              actionHtml = `<button type="button" class="secondary" onclick="markNotificationRead('${n.id}'); switchMainTab('feed')">В ленту</button>`;
+            }
+
+            if (!n.is_read && n.type !== "friend_request") {
+              actionHtml += `<button type="button" class="secondary" onclick="markNotificationRead('${n.id}')">Прочитано</button>`;
+            }
+
+            return `
+              <div class="item-row ${n.is_read ? "" : "unread"}">
+                <div class="user-inline">
+                  ${renderAvatarHtml(n.actor_id, "avatar-md")}
+                  <div>
+                    <div>${text}</div>
+                    <div class="status-tag" style="margin-top:3px;">${escapeHtml(formatDateTime(n.created_at))}${n.is_read ? "" : " · Новое"}</div>
+                  </div>
+                </div>
+                <div class="item-actions">${actionHtml}</div>
+              </div>
+            `;
+          }).join("") : `<div class="desc" style="color:var(--muted);">Уведомлений пока нет.</div>`}
+        </div>
+      `;
+
+      const markAllBtn = document.getElementById("markAllReadBtn");
+      if (markAllBtn) {
+        markAllBtn.addEventListener("click", async () => {
+          if (!sb || !currentUser) return;
+          await sb.from("notifications").update({ is_read: true }).eq("user_id", currentUser.id).eq("is_read", false);
+          notifications = notifications.map(n => ({ ...n, is_read: true }));
+          updateBadges();
+          renderNotifications();
+        });
+      }
+    }
+
+    window.markNotificationRead = async (notifId) => {
+      if (!sb || !currentUser) return;
+      await sb.from("notifications").update({ is_read: true }).eq("id", notifId).eq("user_id", currentUser.id);
+      notifications = notifications.map(n => n.id === notifId ? { ...n, is_read: true } : n);
+      updateBadges();
+      if (activeTab === "notifications") renderNotifications();
+    };
+
+    window.openTorrentById = (id) => {
+      const found = myMovies.find(m => m.id === id);
+      if (found) openTorrent(found.torrent);
+    };
+
+    window.startEditMovie = (id) => {
+      const found = myMovies.find(m => m.id === id);
+      if (!found) return;
+
+      switchMainTab("my");
+      document.getElementById("editId").value = found.id;
+      document.getElementById("title").value = found.title || "";
+      document.getElementById("releaseYear").value = found.releaseYear || "";
+      document.getElementById("duration").value = found.duration || "";
+      document.getElementById("country").value = found.country || "";
+      document.getElementById("genre").value = found.genre || "";
+      document.getElementById("director").value = found.director || "";
+      document.getElementById("cast").value = found.cast || "";
+      watchedDateInput.value = found.watchedDate || "";
+
+      currentRating = found.rating || 7;
+      ratingValue.textContent = currentRating;
+      renderStarPicker();
+
+      document.getElementById("publicFlag").checked = found.isPublic !== false;
+      document.getElementById("rewatchFlag").checked = Boolean(found.rewatch);
+      document.getElementById("cdStatus").value = found.cdStatus || "wait";
+      document.getElementById("cdLabel").value = found.cdLabel || "";
+      document.getElementById("torrent").value = found.torrent || "";
+      document.getElementById("plot").value = found.plot || "";
+      document.getElementById("description").value = found.description || "";
+      currentCoverDataUrl = found.cover || "";
+
+      document.getElementById("formTitle").textContent = "Редактировать фильм";
+      document.getElementById("submitBtn").textContent = "Сохранить изменения";
+      document.getElementById("cancelEditBtn").style.display = "block";
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    };
+
+    function resetForm() {
+      document.getElementById("movieForm").reset();
+      document.getElementById("editId").value = "";
+      document.getElementById("publicFlag").checked = profile.default_public !== false;
+      watchedDateInput.valueAsDate = new Date();
+      currentRating = 7;
+      currentCoverDataUrl = "";
+      ratingValue.textContent = currentRating;
+      renderStarPicker();
+      document.getElementById("formTitle").textContent = "Добавить фильм";
+      document.getElementById("submitBtn").textContent = "Сохранить в каталог";
+      document.getElementById("cancelEditBtn").style.display = "none";
+    }
+
+    document.getElementById("cancelEditBtn").addEventListener("click", resetForm);
+
+    window.deleteMovie = async (id) => {
+      if (!sb || !currentUser) return;
+      const { error } = await sb.from("movies").delete().eq("id", id).eq("user_id", currentUser.id);
+      if (error) {
+        alert("Не удалось удалить запись: " + error.message);
+        return;
+      }
+      myMovies = myMovies.filter(m => m.id !== id);
+      renderMyMovies();
+      if (activeTab === "taste") renderTasteMatch();
+    };
+
+    document.getElementById("movieForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      if (!sb || !currentUser) return;
+
+      const title = document.getElementById("title").value.trim();
+      if (!title) return;
+
+      const editId = document.getElementById("editId").value;
+      const submitBtn = document.getElementById("submitBtn");
+      submitBtn.disabled = true;
+
+      const movieData = {
+        title,
+        releaseYear: document.getElementById("releaseYear").value.trim(),
+        duration: document.getElementById("duration").value.trim(),
+        country: document.getElementById("country").value.trim(),
+        genre: document.getElementById("genre").value.trim(),
+        director: document.getElementById("director").value.trim(),
+        cast: document.getElementById("cast").value.trim(),
+        watchedDate: watchedDateInput.value,
+        rating: currentRating,
+        isPublic: document.getElementById("publicFlag").checked,
+        rewatch: document.getElementById("rewatchFlag").checked,
+        cdStatus: document.getElementById("cdStatus").value,
+        cdLabel: document.getElementById("cdLabel").value.trim(),
+        torrent: document.getElementById("torrent").value.trim(),
+        cover: currentCoverDataUrl,
+        plot: document.getElementById("plot").value.trim(),
+        description: document.getElementById("description").value.trim()
+      };
+
+      try {
+        if (editId) {
+          const { data, error } = await sb
+            .from("movies")
+            .update(mapMovieToRow(movieData, currentUser.id))
+            .eq("id", editId)
+            .eq("user_id", currentUser.id)
+            .select("*")
+            .single();
+
+          if (error) throw error;
+          const updated = mapRowToMovie(data);
+          myMovies = myMovies.map(m => m.id === editId ? updated : m);
+        } else {
+          const { data, error } = await sb
+            .from("movies")
+            .insert(mapMovieToRow(movieData, currentUser.id))
+            .select("*")
+            .single();
+
+          if (error) throw error;
+          myMovies.unshift(mapRowToMovie(data));
+
+          if (movieData.isPublic) {
+            const friendIds = Array.from(getConfirmedFriendIds());
+            await Promise.all(
+              friendIds.map(fid => createNotification(fid, "friend_movie", { movie_title: title }))
+            );
+          }
+        }
+
+        renderMyMovies();
+        if (activeTab === "taste") renderTasteMatch();
+        resetForm();
+      } catch (err) {
+        alert("Ошибка сохранения в облако: " + (err.message || err));
+      } finally {
+        submitBtn.disabled = false;
+      }
+    });
+
+    document.getElementById("searchInput").addEventListener("input", renderMyMovies);
+    document.getElementById("filterStatus").addEventListener("change", renderMyMovies);
+    document.getElementById("filterGenre").addEventListener("change", renderMyMovies);
+    document.getElementById("filterRating").addEventListener("change", renderMyMovies);
+    document.getElementById("sortBy").addEventListener("change", renderMyMovies);
+
+    document.getElementById("feedSearchInput").addEventListener("input", renderFriendsFeed);
+    document.getElementById("feedFriendFilter").addEventListener("change", renderFriendsFeed);
+    document.getElementById("feedScopeFilter").addEventListener("change", renderFriendsFeed);
+    document.getElementById("feedSortBy").addEventListener("change", renderFriendsFeed);
+
+    const dotsBtn = document.getElementById("dotsBtn");
+    const dropdownMenu = document.getElementById("dropdownMenu");
+
+    function closeDropdownMenu() {
+      dropdownMenu.classList.remove("open");
+    }
+
+    dotsBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      dropdownMenu.classList.toggle("open");
+    });
+
+    document.addEventListener("click", (e) => {
+      if (!document.getElementById("menuWrap").contains(e.target)) {
+        closeDropdownMenu();
+      }
+    });
+
+    function downloadFile(content, fileName, mimeType) {
+      const blob = new Blob([content], { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileName;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    document.getElementById("exportJsonBtn").addEventListener("click", () => {
+      closeDropdownMenu();
+      downloadFile(JSON.stringify(myMovies, null, 2), "movies-cd-catalog.json", "application/json;charset=utf-8");
+    });
+
+    document.getElementById("exportCsvBtn").addEventListener("click", () => {
+      closeDropdownMenu();
+      const headers = [
+        "Название", "Год", "Страна", "Жанр", "Режиссёр", "В главных ролях",
+        "Длительность", "Дата просмотра", "Оценка", "В ленте друзей", "Пересмотреть",
+        "Статус CD", "Метка CD", "Торрент", "Сюжет", "Заметка"
+      ];
+      const csvEscape = (val) => `"${String(val ?? "").replace(/"/g, '""')}"`;
+
+      const rows = myMovies.map(m => [
+        m.title, m.releaseYear, m.country, m.genre, m.director, m.cast,
+        m.duration, m.watchedDate, m.rating, m.isPublic !== false ? "Да" : "Нет",
+        m.rewatch ? "Да" : "Нет", m.cdStatus === "done" ? "Записан" : "Не записан",
+        m.cdLabel, m.torrent, m.plot, m.description
+      ].map(csvEscape).join(";"));
+
+      const csvContent = "\uFEFF" + [headers.map(csvEscape).join(";"), ...rows].join("\r\n");
+      downloadFile(csvContent, "movies-cd-catalog.csv", "text/csv;charset=utf-8");
+    });
+
+    document.getElementById("importJsonBtn").addEventListener("click", () => {
+      closeDropdownMenu();
+      document.getElementById("importFile").click();
+    });
+
+    document.getElementById("importFile").addEventListener("change", async (e) => {
+      const file = e.target.files[0];
+      if (!file || !sb || !currentUser) return;
+
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const imported = JSON.parse(reader.result);
+          if (!Array.isArray(imported)) {
+            alert("Некорректный формат файла резервной копии.");
+            return;
+          }
+
+          const rowsToInsert = imported
+            .filter(item => item && String(item.title || "").trim())
+            .map(item => mapMovieToRow({
+              title: String(item.title || "").trim(),
+              releaseYear: String(item.releaseYear || item.release_year || "").trim(),
+              duration: String(item.duration || "").trim(),
+              country: String(item.country || "").trim(),
+              genre: String(item.genre || "").trim(),
+              director: String(item.director || "").trim(),
+              cast: String(item.cast || item.cast_members || "").trim(),
+              watchedDate: String(item.watchedDate || item.watched_date || "").trim(),
+              rating: Math.min(10, Math.max(1, Number(item.rating) || 7)),
+              isPublic: (item.isPublic ?? item.is_public) !== false,
+              rewatch: Boolean(item.rewatch),
+              cdStatus: (item.cdStatus || item.cd_status) === "done" ? "done" : "wait",
+              cdLabel: String(item.cdLabel || item.cd_label || "").trim(),
+              torrent: String(item.torrent || "").trim(),
+              cover: String(item.cover || ""),
+              plot: String(item.plot || "").trim(),
+              description: String(item.description || "").trim()
+            }, currentUser.id));
+
+          if (!rowsToInsert.length) {
+            alert("В файле нет подходящих записей фильмов.");
+            return;
+          }
+
+          const { error } = await sb.from("movies").insert(rowsToInsert);
+          if (error) throw error;
+
+          await fetchAllCatalogData();
+          alert(`Импортировано фильмов: ${rowsToInsert.length}`);
+        } catch (err) {
+          alert("Не удалось импортировать файл: " + (err.message || err));
+        }
+      };
+      reader.readAsText(file);
+      e.target.value = "";
+    });
+
+    function unsubscribeRealtime() {
+      if (realtimeChannel && sb) {
+        sb.removeChannel(realtimeChannel);
+        realtimeChannel = null;
+      }
+    }
+
+    function subscribeRealtime() {
+      unsubscribeRealtime();
+      if (!sb || !currentUser) return;
+
+      const uid = currentUser.id;
+
+      realtimeChannel = sb
+        .channel(`user-live-${uid}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "notifications",
+            filter: `user_id=eq.${uid}`
+          },
+          async (payload) => {
+            const row = payload.new;
+            if (!row) return;
+
+            if (!profilesMap.has(row.actor_id)) {
+              const { data: p } = await sb
+                .from("profiles")
+                .select("id, display_name, username, bio, avatar_url, default_public, cd_mode, show_splash")
+                .eq("id", row.actor_id)
+                .maybeSingle();
+              if (p) {
+                profilesMap.set(p.id, {
+                  id: p.id,
+                  display_name: p.display_name || "Друг",
+                  username: p.username || "",
+                  bio: p.bio || "",
+                  avatar_url: p.avatar_url || "",
+                  default_public: p.default_public !== false,
+                  cd_mode: Boolean(p.cd_mode),
+                  show_splash: p.show_splash !== false
+                });
+              }
+            }
+
+            if (!notifications.some(n => n.id === row.id)) {
+              notifications.unshift(row);
+            }
+            updateBadges();
+            if (activeTab === "notifications") {
+              renderNotifications();
+            }
+          }
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "UPDATE",
+            schema: "public",
+            table: "notifications",
+            filter: `user_id=eq.${uid}`
+          },
+          (payload) => {
+            const row = payload.new;
+            if (!row) return;
+            notifications = notifications.map(n => n.id === row.id ? row : n);
+            updateBadges();
+            if (activeTab === "notifications") {
+              renderNotifications();
+            }
+          }
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "friend_requests"
+          },
+          async (payload) => {
+            const r = payload.new || payload.old;
+            if (!r) return;
+            if (r.sender_id === uid || r.receiver_id === uid) {
+              await fetchAllCatalogData();
+            }
+          }
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "movies"
+          },
+          async (payload) => {
+            const m = payload.new || payload.old;
+            if (!m) return;
+            if (m.user_id !== uid) {
+              await fetchAllCatalogData();
+            }
+          }
+        )
+        .subscribe();
+    }
+
+    async function handleSessionChange(session) {
+      currentUser = session?.user || null;
+      if (!currentUser) {
+        unsubscribeRealtime();
+        myMovies = [];
+        allPublicOtherMovies = [];
+        friendRequests = [];
+        notifications = [];
+        updateBadges();
+        document.getElementById("appContainer").style.display = "none";
+        document.getElementById("authScreen").style.display = "block";
+        tryShowSplashOncePerSession(false);
+        return;
+      }
+
+      document.getElementById("authScreen").style.display = "none";
+      document.getElementById("appContainer").style.display = "grid";
+
+      await loadOrCreateProfile(currentUser);
+      updateHeaderProfileBadge();
+      applyCdModeUi();
+      tryShowSplashOncePerSession(false);
+      await fetchAllCatalogData();
+      if (isSplashOpen()) updateSplashText();
+      subscribeRealtime();
+    }
+
+    renderStarPicker();
+
+    if (!isConfigReady) {
+      setAuthMessage("Подсказка: вставь SUPABASE_URL и SUPABASE_ANON_KEY в начале <script> и выполни SQL-скрипт.", "err");
+      tryShowSplashOncePerSession(false);
+    } else {
+      sb.auth.getSession().then(({ data }) => handleSessionChange(data.session));
+      sb.auth.onAuthStateChange((_event, session) => {
+        handleSessionChange(session);
+      });
+    }
+  </script>
+</body>
+</html>
